@@ -34,9 +34,11 @@ function serializeFiles(files: BinaryFiles | null): CanvasScene['files'] {
 function CanvasInstance({
   onReady,
   onChange,
+  renderTopRightUI,
 }: {
   onReady: (api: ExcalidrawImperativeAPI) => void
   onChange: (els: readonly ExcalidrawElement[], _appState: unknown, fs: BinaryFiles) => void
+  renderTopRightUI?: () => JSX.Element
 }) {
   const { lang } = useLang()
   return (
@@ -45,6 +47,7 @@ function CanvasInstance({
       langCode={lang === 'id' ? 'id' : 'en'}
       theme="light"
       onChange={onChange}
+      renderTopRightUI={renderTopRightUI}
       UIOptions={{
         canvasActions: {
           loadScene: false,
@@ -123,26 +126,28 @@ export function ExcalidrawCanvas({
     return () => document.removeEventListener('keydown', stop, true)
   }, [isFull])
 
-  const canvas = (
-    <CanvasInstance onReady={handleReady} onChange={handleChange} />
-  )
-
-  return (
-    <div className="relative">
-      <div className="overflow-hidden rounded-2xl border hairline" style={{ height: '68dvh' }}>
-        {canvas}
-      </div>
-
-      {/* Tombol full screen mengambang di pojok kanan atas canvas. */}
+  /* Tombol full screen DI DALAM Excalidraw (slot top-right) — ikut pindah
+     otomatis saat mode fullscreen, jadi tidak pernah tertinggal di belakang. */
+  const renderTopRightUI = useCallback(
+    () => (
       <button
         type="button"
         onClick={() => setIsFull(true)}
         title={t('board.fullscreen')}
         aria-label={t('board.fullscreen')}
-        className="absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-xl bg-white/90 text-ink-soft shadow-md ring-1 ring-black/5 backdrop-blur transition-colors hover:bg-white hover:text-ink"
+        className="grid h-8 w-8 place-items-center rounded-lg border border-black/5 bg-white text-ink-soft shadow-sm transition-colors hover:bg-black/5 hover:text-ink"
       >
-        <ExpandIcon className="h-[18px] w-[18px]" />
+        <ExpandIcon className="h-[16px] w-[16px]" />
       </button>
+    ),
+    [t],
+  )
+
+  return (
+    <div className="relative">
+      <div className="overflow-hidden rounded-2xl border hairline" style={{ height: '68dvh' }}>
+        <CanvasInstance onReady={handleReady} onChange={handleChange} renderTopRightUI={renderTopRightUI} />
+      </div>
 
       {/* ---------- FULL SCREEN: overlay seluruh halaman ---------- */}
       {isFull &&
@@ -150,7 +155,7 @@ export function ExcalidrawCanvas({
           <div className="fixed inset-0 z-[120] bg-white" role="dialog" aria-modal="true">
             {/* Bungkus eksplisit 100% tinggi — Excalidraw mengukur parent-nya. */}
             <div className="absolute inset-0">
-              <CanvasInstance onReady={handleReady} onChange={handleChange} />
+              <CanvasInstance onReady={handleReady} onChange={handleChange} renderTopRightUI={renderTopRightUI} />
             </div>
             {/* Tombol Tutup — satu-satunya cara keluar mode full screen. */}
             <button

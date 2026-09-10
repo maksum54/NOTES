@@ -16,6 +16,7 @@ import {
   type CanvasBoard,
   type ChatMessage,
   type DoneStatus,
+  type ISODate,
   type Member,
   type Note,
   type Project,
@@ -26,7 +27,7 @@ import {
 import { loadData, migrate, saveData } from '@/lib/storage'
 import { daysUntil, nowISO, uid } from '@/lib/utils'
 import { reviewSummary, isAiReady } from '@/lib/ai'
-import { backupToDrive, isAutoSyncOn, isDriveConnected } from '@/lib/drive'
+import { backupToDrive, isAutoSyncOn, isDriveConnected, silentReconnect } from '@/lib/drive'
 import { showNotification } from '@/lib/notify'
 import { useLang } from './LangContext'
 import { useAuth } from './AuthContext'
@@ -195,6 +196,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (syncTimer.current) clearTimeout(syncTimer.current)
     }
   }, [data])
+
+  /*
+   * Auto-reconnect Drive: user yang pernah menyetujui akses Drive tidak
+   * perlu klik "Sambungkan" lagi tiap buka app — token dipperbarui senyap.
+   * Setelah berhasil, trigger sync ulang dengan memicu state re-render.
+   */
+  const reconnectRef = useRef(false)
+  const [reconnectedAt, setReconnectedAt] = useState<ISODate | null>(null)
+  useEffect(() => {
+    if (reconnectRef.current) return
+    reconnectRef.current = true
+    if (isDriveConnected()) return
+    void silentReconnect().then((ok) => {
+      if (ok) setReconnectedAt(nowISO())
+    })
+    // Sengaja sekali per sesi app dibuka.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* Setelah reconnect sukses, jalankan satu backup agar data terbaru langsung naik. */
+  useEffect(() => {
+    if (!reconnectedAt) return
+    if (!isAutoSyncOn()) return
+    setSyncing(true)
+    backupToDrive(data)
+      .then(() => setSyncError(null))
+      .catch((err: unknown) => setSyncError(err instanceof Error ? err.message : 'sync-failed'))
+      .finally(() => setSyncing(false))
+    // Jalankan tepat sekali setiap reconnect sukses (data saat itu).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reconnectedAt])
 
   const mutate = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => ({ ...fn(prev), updatedAt: nowISO() }))

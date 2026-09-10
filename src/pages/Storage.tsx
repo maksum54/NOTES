@@ -151,8 +151,8 @@ export function StoragePage() {
             </p>
           </GlassCard>
         ) : !connected ? (
-          <GlassCard>
-            <div className="flex flex-col items-center gap-4 py-8 text-center">
+          <GlassCard className="flex min-h-[60dvh] items-center justify-center">
+            <div className="flex flex-col items-center gap-4 text-center">
               <div className="grid h-14 w-14 place-items-center rounded-2xl bg-accent/15 text-accent">
                 <CloudIcon className="h-7 w-7" />
               </div>
@@ -216,11 +216,13 @@ export function StoragePage() {
               {loading && files.length === 0 ? (
                 <p className="py-6 text-center text-[13px] text-ink-faint">{t('common.loading')}</p>
               ) : files.length === 0 ? (
-                <EmptyState
-                  icon={<CloudIcon className="h-7 w-7" />}
-                  title={t('storage.empty')}
-                  hint={t('storage.emptyHint')}
-                />
+                <div className="flex min-h-[50dvh] items-center justify-center">
+                  <EmptyState
+                    icon={<CloudIcon className="h-7 w-7" />}
+                    title={t('storage.empty')}
+                    hint={t('storage.emptyHint')}
+                  />
+                </div>
               ) : (
                 <ul className="-mx-2 space-y-0.5">
                   {files.map((file) => (

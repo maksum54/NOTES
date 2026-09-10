@@ -17,6 +17,7 @@ const KEYS = {
   driveStorageFolderId: 'notes.drive.storageFolderId',
   driveLastSync: 'notes.drive.lastSync',
   driveAuto: 'notes.drive.auto',
+  driveEverConnected: 'notes.drive.everConnected',
   assistantChat: 'notes.assistant.chat',
   installDismissed: 'notes.install.dismissed',
 } as const

@@ -112,6 +112,31 @@ export function setAutoSync(on: boolean): void {
   writeRaw('driveAuto', on ? '1' : '0')
 }
 
+/**
+ * Pernah tersambung = user setidaknya sekali menyetujui akses Drive.
+ * Setelah itu app boleh memperbarui token otomatis (tanpa consent) tiap dibuka.
+ */
+export function wasEverConnected(): boolean {
+  return readRaw('driveEverConnected') === '1'
+}
+
+/**
+ * Auto-reconnect senyap: hanya jalan kalau user sudah pernah connect dan
+ * token sedang tidak ada/kedaluwarsa. Popup Google TIDAK muncul (prompt '').
+ * Gagal (offline, browser blokir popup) dianggap tidak fatal.
+ */
+export async function silentReconnect(): Promise<boolean> {
+  if (!isDriveConfigured()) return false
+  if (isDriveConnected()) return true
+  if (!wasEverConnected()) return false
+  try {
+    await connectDrive(false)
+    return isDriveConnected()
+  } catch {
+    return false
+  }
+}
+
 /** Buka consent popup Google dan simpan access token. */
 export async function connectDrive(interactive = true): Promise<void> {
   if (!isDriveConfigured()) throw new Error('drive-not-configured')
@@ -126,6 +151,7 @@ export async function connectDrive(interactive = true): Promise<void> {
           reject(new Error(resp.error || 'no-access-token'))
           return
         }
+        writeRaw('driveEverConnected', '1')
         writeRaw(
           'driveToken',
           JSON.stringify({
@@ -145,6 +171,7 @@ export async function disconnectDrive(): Promise<void> {
   removeRaw('driveToken')
   removeRaw('driveFileId')
   removeRaw('driveStorageFolderId')
+  removeRaw('driveEverConnected')
   if (!token) return
   try {
     const accounts = await loadGis()
