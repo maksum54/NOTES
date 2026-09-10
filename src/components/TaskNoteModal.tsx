@@ -96,6 +96,15 @@ export function TaskNoteModal({
   }
 
   const savedRange = useRef<Range | null>(null)
+
+  /** Simpan seleksi editor agar format tetap kena setelah klik toolbar. */
+  const saveSelection = () => {
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      savedRange.current = sel.getRangeAt(0).cloneRange()
+    }
+  }
+
   const restoreSelection = () => {
     editorRef.current?.focus()
     const sel = window.getSelection()
@@ -284,9 +293,18 @@ export function TaskNoteModal({
             refreshFormat()
             emitBody()
           }}
-          onBlur={emitBody}
-          onMouseUp={refreshFormat}
-          onKeyUp={refreshFormat}
+          onBlur={() => {
+            saveSelection()
+            emitBody()
+          }}
+          onMouseUp={() => {
+            saveSelection()
+            refreshFormat()
+          }}
+          onKeyUp={() => {
+            saveSelection()
+            refreshFormat()
+          }}
           onPaste={(e) => {
             const img = Array.from(e.clipboardData.files).find((f) => f.type.startsWith('image/'))
             if (img) {
