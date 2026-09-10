@@ -16,7 +16,6 @@ import { TasksPage } from '@/pages/Tasks'
 import { NotesPage } from '@/pages/Notes'
 import { BoardsPage, BoardDetailPage } from '@/pages/Boards'
 import { StoragePage } from '@/pages/Storage'
-import { StandardsPage } from '@/pages/Standards'
 import { WarningsPage } from '@/pages/Warnings'
 import { AssistantPage } from '@/pages/Assistant'
 import { SettingsPage } from '@/pages/Settings'
@@ -61,7 +60,6 @@ function Gate() {
             path="/projects/:projectId/buildings/:buildingId/tasks/:taskId"
             element={<TaskDetailPage />}
           />
-          <Route path="/standards" element={<StandardsPage />} />
           <Route path="/warnings" element={<WarningsPage />} />
           <Route path="/assistant" element={<AssistantPage />} />
           <Route path="/settings" element={<SettingsPage />} />

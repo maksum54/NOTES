@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import {
@@ -67,15 +67,26 @@ export function BoardsPage() {
       ) : (
         <div className="stack-fade grid gap-3 sm:grid-cols-2">
           {data.boards.map((board) => (
-            <GlassCard key={board.id} hover className="flex flex-col gap-3">
+            <GlassCard
+              key={board.id}
+              hover
+              role="link"
+              tabIndex={0}
+              onClick={() => navigate(`/boards/${board.id}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  navigate(`/boards/${board.id}`)
+                }
+              }}
+              className="group flex cursor-pointer flex-col gap-3"
+            >
               <div className="flex items-start gap-3">
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-accent/15 text-accent">
                   <PenIcon />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <Link to={`/boards/${board.id}`} className="block">
-                    <h2 className="truncate text-[16px] font-bold text-ink hover:text-accent">{board.title}</h2>
-                  </Link>
+                  <h2 className="truncate text-[16px] font-bold text-ink group-hover:text-accent">{board.title}</h2>
                   <p className="truncate text-[12px] text-ink-faint">
                     {board.scene?.elements.length ?? 0} elemen · {formatDateTime(board.updatedAt, lang)}
                   </p>
@@ -84,19 +95,19 @@ export function BoardsPage() {
                   variant="ghost"
                   size="icon"
                   aria-label={t('common.delete')}
-                  onClick={() => setPendingDelete(board.id)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPendingDelete(board.id)
+                  }}
                 >
                   <TrashIcon className="h-[18px] w-[18px] text-ink-faint hover:text-danger" />
                 </GlassButton>
               </div>
               <div className="flex items-center gap-2">
                 <Badge tone="accent" icon={<UsersIcon className="h-3 w-3" />}>{t('boards.shareable')}</Badge>
-                <Link
-                  to={`/boards/${board.id}`}
-                  className="ml-auto flex items-center gap-1 text-[13px] font-semibold text-accent hover:underline"
-                >
+                <span className="ml-auto flex items-center gap-1 text-[13px] font-semibold text-accent group-hover:underline">
                   {t('common.open')}
-                </Link>
+                </span>
               </div>
             </GlassCard>
           ))}

@@ -6,8 +6,8 @@ import { useAuth } from '@/context/AuthContext'
 import { Badge, EmptyState, GlassButton, GlassCard, ProgressBar } from '@/components/glass/Glass'
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
-  AlertIcon, BellIcon, BookIcon, BoltIcon, BuildingIcon, ChevronRight,
-  CheckIcon, ClockIcon, CloudIcon, FolderIcon, PlusIcon, SparkIcon, TaskIcon,
+  AlertIcon, BellIcon, BoltIcon, BuildingIcon, ChevronRight,
+  CheckIcon, ClockIcon, CloudIcon, FolderIcon, NoteIcon, PlusIcon, SparkIcon, TaskIcon,
 } from '@/components/icons'
 import { daysUntil, formatDate } from '@/lib/utils'
 import { isAiReady } from '@/lib/ai'
@@ -61,7 +61,6 @@ export function DashboardPage() {
 
   const todo = [
     data.projects.length === 0 && { to: '/projects', label: t('dashboard.createProject'), icon: <FolderIcon className="h-4 w-4" /> },
-    data.standards.length === 0 && { to: '/standards', label: t('dashboard.createStandard'), icon: <BookIcon className="h-4 w-4" /> },
     !isAiReady() && { to: '/settings', label: t('dashboard.setupAi'), icon: <SparkIcon className="h-4 w-4" /> },
     !isDriveConnected() && { to: '/settings', label: t('dashboard.connectDrive'), icon: <CloudIcon className="h-4 w-4" /> },
   ].filter(Boolean) as { to: string; label: string; icon: ReactNode }[]
@@ -91,7 +90,7 @@ export function DashboardPage() {
           <StatCard to="/projects" icon={<FolderIcon className="h-[18px] w-[18px]" />} label={t('dashboard.projects')} value={data.projects.length} tone="accent" />
           <StatCard to="/projects" icon={<BuildingIcon className="h-[18px] w-[18px]" />} label={t('dashboard.buildings')} value={stats.buildings} tone="info" />
           <StatCard to="/tasks" icon={<TaskIcon className="h-[18px] w-[18px]" />} label={t('dashboard.openTasks')} value={stats.tasksTotal - stats.tasksDone} tone="warn" />
-          <StatCard to="/standards" icon={<BookIcon className="h-[18px] w-[18px]" />} label={t('dashboard.standards')} value={data.standards.length} tone="ok" />
+          <StatCard to="/notes" icon={<NoteIcon className="h-[18px] w-[18px]" />} label={t('nav.notes')} value={data.notes.length} tone="ok" />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-5">

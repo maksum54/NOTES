@@ -15,7 +15,6 @@ export const en: Dict = {
     tasks: 'Tasks',
     notes: 'Notes',
     boards: 'Canvas',
-    standards: 'Standard Notes',
     warnings: 'Warnings',
     assistant: 'AI Assistant',
     storage: 'Storage',

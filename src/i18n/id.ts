@@ -13,7 +13,6 @@ export const id = {
     tasks: 'Task',
     notes: 'Catatan',
     boards: 'Canvas',
-    standards: 'Catatan Standard',
     warnings: 'Peringatan',
     assistant: 'Asisten AI',
     storage: 'Storage',

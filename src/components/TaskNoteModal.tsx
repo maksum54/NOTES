@@ -50,6 +50,8 @@ export function TaskNoteModal({
   const [format, setFormat] = useState({ bold: false, italic: false, underline: false, strike: false })
   const [size, setSize] = useState(14)
   const [empty, setEmpty] = useState(isEmptyHtml(initial.html))
+  /* Lebar dialog bisa ditarik dari tepi kiri/kanan (px). */
+  const [width, setWidth] = useState<number | null>(null)
 
   // Nilai masuk saat modal dibuka (bukan tiap render, agar kursor stabil).
   useEffect(() => {
@@ -146,6 +148,25 @@ export function TaskNoteModal({
       active ? 'bg-accent/15 text-accent' : 'text-ink-soft hover:bg-black/5 dark:hover:bg-white/10',
     )
 
+  /* Tarik tepi kiri/kanan dialog untuk melebarkan/mempersempit area input. */
+  const startResize = (e: React.PointerEvent<HTMLDivElement>, side: 'left' | 'right') => {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startW = (width ?? window.innerWidth < 640 ? window.innerWidth - 32 : 576)
+    const dir = side === 'right' ? 1 : -1
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(window.innerWidth - 24, Math.max(320, startW + dir * (ev.clientX - startX)))
+      setWidth(next)
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-start justify-center p-4 sm:items-center">
       <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
@@ -153,11 +174,30 @@ export function TaskNoteModal({
         role="dialog"
         aria-modal="true"
         className={cx(
-          'relative z-10 flex max-h-[88dvh] w-full max-w-xl flex-col rounded-2xl border border-black/10 bg-white shadow-2xl outline-none',
+          'relative z-10 flex max-h-[88dvh] w-full flex-col rounded-2xl border border-black/10 bg-white shadow-2xl outline-none',
           'dark:border-white/15 dark:bg-[#1e2028]',
         )}
-        style={draft.color ? { backgroundColor: draft.color } : undefined}
+        style={{
+          ...(draft.color ? { backgroundColor: draft.color } : null),
+          width: width ? `${width}px` : undefined,
+          maxWidth: 'min(92vw, 1080px)',
+        }}
       >
+        {/* ---------- handle resize kiri & kanan ---------- */}
+        <div
+          onPointerDown={(e) => startResize(e, 'left')}
+          className="absolute bottom-10 left-0 top-4 z-20 w-1.5 cursor-ew-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+          aria-hidden="true"
+        >
+          <span className="absolute left-1 top-1/2 h-10 w-1 -translate-y-1/2 rounded-pill bg-ink/20" />
+        </div>
+        <div
+          onPointerDown={(e) => startResize(e, 'right')}
+          className="absolute bottom-10 right-0 top-4 z-20 w-1.5 cursor-ew-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+          aria-hidden="true"
+        >
+          <span className="absolute right-1 top-1/2 h-10 w-1 -translate-y-1/2 rounded-pill bg-ink/20" />
+        </div>
         {/* ---------- judul + pin ---------- */}
         <div className="flex items-center gap-2 px-5 pt-4">
           <input

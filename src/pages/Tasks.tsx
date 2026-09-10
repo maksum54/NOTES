@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import { Badge, GlassButton, GlassCard } from '@/components/glass/Glass'
@@ -212,19 +213,27 @@ function TaskSection({
                 done={row.task.status === 'sudah'}
                 pinned={row.task.pinned}
                 meta={
-                  row.task.dueDate ? (
-                    <Badge
-                      tone={
-                        !archived && row.task.status === 'belum' && (daysUntil(row.task.dueDate) ?? 1) < 0
-                          ? 'danger'
-                          : 'neutral'
-                      }
+                  <>
+                    <Link
+                      to={`/projects/${row.project.id}/buildings/${row.building.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="truncate font-semibold text-accent hover:underline"
+                      title={`${row.project.name} · ${row.building.name}`}
                     >
-                      {formatDate(row.task.dueDate, lang)}
-                    </Badge>
-                  ) : (
-                    <span className="truncate">{row.project.name} · {row.building.name}</span>
-                  )
+                      {row.project.name} · {row.building.name}
+                    </Link>
+                    {row.task.dueDate && (
+                      <Badge
+                        tone={
+                          !archived && row.task.status === 'belum' && (daysUntil(row.task.dueDate) ?? 1) < 0
+                            ? 'danger'
+                            : 'neutral'
+                        }
+                      >
+                        {formatDate(row.task.dueDate, lang)}
+                      </Badge>
+                    )}
+                  </>
                 }
                 onToggleDone={() => onToggle({ projectId: row.project.id, buildingId: row.building.id }, row.task.id)}
                 onOpen={() => onOpen(row)}
