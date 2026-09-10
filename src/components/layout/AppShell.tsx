@@ -8,7 +8,7 @@ import { useData } from '@/context/DataContext'
 import { GlassButton } from '@/components/glass/Glass'
 import {
   BellIcon, BookIcon, CloudIcon, FolderIcon, GearIcon, GlobeIcon, HomeIcon,
-  MoonIcon, MonitorIcon, OfflineIcon, SparkIcon, SunIcon, TaskIcon,
+  MoonIcon, MonitorIcon, OfflineIcon, PenIcon, SparkIcon, SunIcon, TaskIcon,
 } from '@/components/icons'
 import { InstallPrompt } from './InstallPrompt'
 
@@ -58,6 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: '/', labelKey: 'nav.dashboard', icon: HomeIcon },
     { to: '/projects', labelKey: 'nav.projects', icon: FolderIcon },
     { to: '/tasks', labelKey: 'nav.tasks', icon: TaskIcon, badge: openTaskCount },
+    { to: '/boards', labelKey: 'nav.boards', icon: PenIcon },
     { to: '/standards', labelKey: 'nav.standards', icon: BookIcon },
     { to: '/warnings', labelKey: 'nav.warnings', icon: BellIcon, badge: unreadWarnings },
     { to: '/assistant', labelKey: 'nav.assistant', icon: SparkIcon },

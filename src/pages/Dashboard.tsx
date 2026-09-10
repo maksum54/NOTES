@@ -7,7 +7,7 @@ import { Badge, EmptyState, GlassButton, GlassCard, ProgressBar } from '@/compon
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
   AlertIcon, BellIcon, BookIcon, BoltIcon, BuildingIcon, ChevronRight,
-  CheckIcon, ClockIcon, CloudIcon, FolderIcon, PlusIcon, SparkIcon,
+  CheckIcon, ClockIcon, CloudIcon, FolderIcon, PlusIcon, SparkIcon, TaskIcon,
 } from '@/components/icons'
 import { daysUntil, formatDate } from '@/lib/utils'
 import { isAiReady } from '@/lib/ai'
@@ -66,10 +66,15 @@ export function DashboardPage() {
     !isDriveConnected() && { to: '/settings', label: t('dashboard.connectDrive'), icon: <CloudIcon className="h-4 w-4" /> },
   ].filter(Boolean) as { to: string; label: string; icon: ReactNode }[]
 
+  // Jam penyapa sesuai waktu setempat.
+  const hour = new Date().getHours()
+  const greeting =
+    hour < 11 ? t('dashboard.morning') : hour < 15 ? t('dashboard.afternoon') : hour < 19 ? t('dashboard.evening') : t('dashboard.night')
+
   return (
     <>
       <PageHeader
-        title={t('dashboard.greeting', { name: account?.name ?? '' })}
+        title={`${greeting}, ${account?.name ?? ''}`}
         subtitle={t('app.tagline')}
         action={
           <Link to="/projects">
@@ -83,35 +88,15 @@ export function DashboardPage() {
       <div className="stack-fade space-y-4">
         {/* --- kartu statistik --- */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard
-            icon={<FolderIcon className="h-[18px] w-[18px]" />}
-            label={t('dashboard.projects')}
-            value={data.projects.length}
-            tone="accent"
-          />
-          <StatCard
-            icon={<BuildingIcon className="h-[18px] w-[18px]" />}
-            label={t('dashboard.buildings')}
-            value={stats.buildings}
-            tone="info"
-          />
-          <StatCard
-            icon={<ClockIcon className="h-[18px] w-[18px]" />}
-            label={t('dashboard.openTasks')}
-            value={stats.tasksTotal - stats.tasksDone}
-            tone="warn"
-          />
-          <StatCard
-            icon={<BookIcon className="h-[18px] w-[18px]" />}
-            label={t('dashboard.standards')}
-            value={data.standards.length}
-            tone="ok"
-          />
+          <StatCard to="/projects" icon={<FolderIcon className="h-[18px] w-[18px]" />} label={t('dashboard.projects')} value={data.projects.length} tone="accent" />
+          <StatCard to="/projects" icon={<BuildingIcon className="h-[18px] w-[18px]" />} label={t('dashboard.buildings')} value={stats.buildings} tone="info" />
+          <StatCard to="/tasks" icon={<TaskIcon className="h-[18px] w-[18px]" />} label={t('dashboard.openTasks')} value={stats.tasksTotal - stats.tasksDone} tone="warn" />
+          <StatCard to="/standards" icon={<BookIcon className="h-[18px] w-[18px]" />} label={t('dashboard.standards')} value={data.standards.length} tone="ok" />
         </div>
 
-        {/* --- progres --- */}
-        {stats.tasksTotal > 0 && (
-          <GlassCard>
+        <div className="grid gap-4 lg:grid-cols-5">
+          {/* --- progres (lebar) --- */}
+          <GlassCard className="lg:col-span-3">
             <div className="mb-3 flex items-baseline justify-between gap-3">
               <p className="text-[13px] font-bold uppercase tracking-wide text-ink-soft">
                 {t('dashboard.progress')}
@@ -121,26 +106,31 @@ export function DashboardPage() {
               </p>
             </div>
             <ProgressBar value={progress} tone={progress >= 100 ? 'ok' : 'accent'} />
-          </GlassCard>
-        )}
-
-        {/* --- mulai cepat --- */}
-        {todo.length > 0 && (
-          <GlassCard>
-            <p className="mb-3 text-[13px] font-bold uppercase tracking-wide text-ink-soft">
-              {t('dashboard.quickStart')}
+            <p className="mt-3 text-[12.5px] leading-relaxed text-ink-faint">
+              {progress >= 100
+                ? t('dashboard.progressDone')
+                : t('dashboard.progressHint', { n: stats.tasksTotal - stats.tasksDone })}
             </p>
-            <div className="flex flex-wrap gap-2">
-              {todo.map((item) => (
-                <Link key={item.label} to={item.to}>
-                  <GlassButton variant="glass" size="sm" icon={item.icon}>
-                    {item.label}
-                  </GlassButton>
-                </Link>
-              ))}
-            </div>
           </GlassCard>
-        )}
+
+          {/* --- mulai cepat --- */}
+          {todo.length > 0 && (
+            <GlassCard className="lg:col-span-2">
+              <p className="mb-3 text-[13px] font-bold uppercase tracking-wide text-ink-soft">
+                {t('dashboard.quickStart')}
+              </p>
+              <div className="flex flex-col gap-2">
+                {todo.map((item) => (
+                  <Link key={item.label} to={item.to}>
+                    <GlassButton variant="glass" size="sm" className="w-full justify-start" icon={item.icon}>
+                      {item.label}
+                    </GlassButton>
+                  </Link>
+                ))}
+              </div>
+            </GlassCard>
+          )}
+        </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
           {/* --- target submit terdekat --- */}
@@ -235,24 +225,29 @@ export function DashboardPage() {
               </Link>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              {data.projects.slice(0, 4).map((p) => (
-                <Link
-                  key={p.id}
-                  to={`/projects/${p.id}`}
-                  className="glass glass-hover flex items-center gap-3 rounded-2xl px-3.5 py-3"
-                >
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent">
-                    <FolderIcon className="h-[18px] w-[18px]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-bold text-ink">{p.name}</p>
-                    <p className="truncate text-[12px] text-ink-faint">
-                      {t('projects.buildingCount', { n: p.buildings.length })}
-                    </p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" />
-                </Link>
-              ))}
+              {data.projects.slice(0, 4).map((p) => {
+                const tasks = p.buildings.flatMap((b) => b.tasks)
+                const done = tasks.filter((x) => x.status === 'sudah').length
+                return (
+                  <Link
+                    key={p.id}
+                    to={`/projects/${p.id}`}
+                    className="glass glass-hover flex items-center gap-3 rounded-2xl px-3.5 py-3"
+                  >
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent">
+                      <FolderIcon className="h-[18px] w-[18px]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14px] font-bold text-ink">{p.name}</p>
+                      <p className="truncate text-[12px] text-ink-faint">
+                        {t('projects.buildingCount', { n: p.buildings.length })}
+                        {tasks.length > 0 && ` · ${t('building.taskCount', { done, total: tasks.length })}`}
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" />
+                  </Link>
+                )
+              })}
             </div>
           </GlassCard>
         )}
@@ -262,11 +257,13 @@ export function DashboardPage() {
 }
 
 function StatCard({
+  to,
   icon,
   label,
   value,
   tone,
 }: {
+  to: string
   icon: ReactNode
   label: string
   value: number
@@ -279,10 +276,12 @@ function StatCard({
     ok: 'bg-ok/15 text-ok',
   }
   return (
-    <GlassCard hover className="p-4">
-      <div className={`mb-3 grid h-9 w-9 place-items-center rounded-xl ${toneMap[tone]}`}>{icon}</div>
-      <p className="text-[27px] font-extrabold leading-none tracking-tight text-ink">{value}</p>
-      <p className="mt-1.5 truncate text-[12px] font-semibold text-ink-faint">{label}</p>
-    </GlassCard>
+    <Link to={to} className="block">
+      <GlassCard hover className="p-4">
+        <div className={`mb-3 grid h-9 w-9 place-items-center rounded-xl ${toneMap[tone]}`}>{icon}</div>
+        <p className="text-[27px] font-extrabold leading-none tracking-tight text-ink">{value}</p>
+        <p className="mt-1.5 truncate text-[12px] font-semibold text-ink-faint">{label}</p>
+      </GlassCard>
+    </Link>
   )
 }

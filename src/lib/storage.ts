@@ -87,6 +87,7 @@ export function migrate(input: unknown): AppData {
     projects: Array.isArray(d.projects) ? d.projects : [],
     standards,
     warnings: Array.isArray(d.warnings) ? d.warnings : [],
+    boards: Array.isArray(d.boards) ? d.boards : [],
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : base.updatedAt,
   }
 }

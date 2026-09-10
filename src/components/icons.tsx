@@ -335,3 +335,32 @@ export const OfflineIcon = (p: P) => (
     <path d="M18.6 16.9A3.75 3.75 0 0 0 17.3 9a5.5 5.5 0 0 0-5-3.9" />
   </Base>
 )
+
+export const ShareIcon = (p: P) => (
+  <Base {...p}>
+    <circle cx="18" cy="5" r="2.6" />
+    <circle cx="6" cy="12" r="2.6" />
+    <circle cx="18" cy="19" r="2.6" />
+    <path d="m8.4 10.8 7.2-4.4M8.4 13.2l7.2 4.4" />
+  </Base>
+)
+
+export const UsersIcon = (p: P) => (
+  <Base {...p}>
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M3.5 19.5a5.5 5.5 0 0 1 11 0" />
+    <path d="M15.5 5.4a3.2 3.2 0 0 1 0 5.9M17 14.3a5.5 5.5 0 0 1 3.5 5.2" />
+  </Base>
+)
+
+export const ExpandIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M9 3H3v6M15 21h6v-6M3 15v6h6M21 9V3h-6" />
+  </Base>
+)
+
+export const ShrinkIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M3 9h6V3M21 15h-6v6M9 21v-6H3M15 3v6h6" />
+  </Base>
+)

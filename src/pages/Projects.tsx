@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import { Badge, EmptyState, Field, GlassButton, GlassCard, GlassInput, ProgressBar } from '@/components/glass/Glass'
@@ -12,6 +12,7 @@ import type { Project } from '@/types'
 export function ProjectsPage() {
   const { t, lang } = useLang()
   const { data, addProject, deleteProject } = useData()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<Project | null>(null)
   const [form, setForm] = useState({ name: '', client: '', location: '' })
@@ -54,17 +55,15 @@ export function ProjectsPage() {
             const tasks = project.buildings.flatMap((b) => b.tasks)
             const done = tasks.filter((task) => task.status === 'sudah').length
             return (
-              <GlassCard key={project.id} hover className="flex flex-col gap-3">
+              <GlassCard key={project.id} hover className="flex cursor-pointer flex-col gap-3" onClick={() => navigate(`/projects/${project.id}`)}>
                 <div className="flex items-start gap-3">
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-accent/15 text-accent">
                     <FolderIcon />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <Link to={`/projects/${project.id}`} className="block">
-                      <h2 className="truncate text-[16px] font-bold text-ink hover:text-accent">
-                        {project.name}
-                      </h2>
-                    </Link>
+                    <h2 className="truncate text-[16px] font-bold text-ink group-hover:text-accent">
+                      {project.name}
+                    </h2>
                     <p className="truncate text-[12.5px] text-ink-faint">
                       {[project.client, project.location].filter(Boolean).join(' · ') ||
                         formatDate(project.createdAt, lang)}
@@ -74,7 +73,10 @@ export function ProjectsPage() {
                     variant="ghost"
                     size="icon"
                     aria-label={t('projects.deleteProject')}
-                    onClick={() => setPendingDelete(project)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setPendingDelete(project)
+                    }}
                   >
                     <TrashIcon className="h-[18px] w-[18px] text-ink-faint hover:text-danger" />
                   </GlassButton>
@@ -95,13 +97,10 @@ export function ProjectsPage() {
                   <ProgressBar value={(done / tasks.length) * 100} tone={done === tasks.length ? 'ok' : 'accent'} />
                 )}
 
-                <Link
-                  to={`/projects/${project.id}`}
-                  className="mt-auto flex items-center gap-1 pt-1 text-[13px] font-semibold text-accent hover:underline"
-                >
+                <span className="mt-auto flex items-center gap-1 pt-1 text-[13px] font-semibold text-accent">
                   {t('common.open')}
                   <ChevronRight className="h-4 w-4" />
-                </Link>
+                </span>
               </GlassCard>
             )
           })}

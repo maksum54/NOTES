@@ -117,6 +117,20 @@ export interface CanvasScene {
   files?: Record<string, { id: string; dataURL: string; mimeType: string; created: number }>
 }
 
+/**
+ * CANVAS BOARD — papan gambar mandiri untuk diskusi team (beda dari task).
+ * Bisa dibagikan lewat link: /boards/:boardId
+ */
+export interface CanvasBoard {
+  id: string
+  title: string
+  scene: CanvasScene | null
+  /** Kunci acak di link; yang punya link (dengan kunci) yang bisa membuka. */
+  shareKey: string
+  createdAt: ISODate
+  updatedAt: ISODate
+}
+
 /** Temuan AI saat SUMMARY CLIENT direview terhadap standard. */
 export type FindingSeverity = 'critical' | 'warning' | 'info'
 
@@ -192,6 +206,7 @@ export interface AppData {
   projects: Project[]
   standards: StandardNote[]
   warnings: Warning[]
+  boards: CanvasBoard[]
   updatedAt: ISODate
 }
 
@@ -203,6 +218,7 @@ export function emptyData(): AppData {
     projects: [],
     standards: [],
     warnings: [],
+    boards: [],
     updatedAt: new Date().toISOString(),
   }
 }

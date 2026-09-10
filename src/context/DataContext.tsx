@@ -13,6 +13,7 @@ import {
   type AiReview,
   type AppData,
   type Building,
+  type CanvasBoard,
   type ChatMessage,
   type DoneStatus,
   type Project,
@@ -60,6 +61,10 @@ interface DataValue {
   addStandards: (notes: StandardNote[]) => void
   updateStandard: (id: string, patch: Partial<StandardNote>) => void
   deleteStandard: (id: string) => void
+  /* -- canvas board (diskusi team) -- */
+  addBoard: (title: string) => CanvasBoard
+  updateBoard: (id: string, patch: Partial<Pick<CanvasBoard, 'title' | 'scene'>>) => void
+  deleteBoard: (id: string) => void
   /* -- warning -- */
   pushWarning: (w: Omit<Warning, 'id' | 'createdAt' | 'read'>) => void
   markWarningRead: (id: string) => void
@@ -184,6 +189,42 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const mutate = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => ({ ...fn(prev), updatedAt: nowISO() }))
   }, [])
+
+  /* ---------- canvas board ---------- */
+
+  const addBoard = useCallback<DataValue['addBoard']>(
+    (title) => {
+      const stamp = nowISO()
+      const board: CanvasBoard = {
+        id: uid('brd'),
+        title: title.trim() || 'Canvas',
+        scene: { elements: [] },
+        shareKey: uid('k').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12),
+        createdAt: stamp,
+        updatedAt: stamp,
+      }
+      mutate((prev) => ({ ...prev, boards: [board, ...prev.boards] }))
+      return board
+    },
+    [mutate],
+  )
+
+  const updateBoard = useCallback<DataValue['updateBoard']>(
+    (id, patch) => {
+      mutate((prev) => ({
+        ...prev,
+        boards: prev.boards.map((b) => (b.id === id ? { ...b, ...patch, updatedAt: nowISO() } : b)),
+      }))
+    },
+    [mutate],
+  )
+
+  const deleteBoard = useCallback<DataValue['deleteBoard']>(
+    (id) => {
+      mutate((prev) => ({ ...prev, boards: prev.boards.filter((b) => b.id !== id) }))
+    },
+    [mutate],
+  )
 
   /* ---------- warnings ---------- */
 
@@ -480,6 +521,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateTask,
       deleteTask,
       toggleTask,
+      addBoard,
+      updateBoard,
+      deleteBoard,
       addStandard,
       addStandards,
       updateStandard,
@@ -496,7 +540,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }),
     [
       data, addProject, updateProject, deleteProject, addBuilding, updateBuilding, deleteBuilding,
-      runReview, addTask, updateTask, deleteTask, toggleTask, addStandard, addStandards,
+      runReview, addTask, updateTask, deleteTask, toggleTask, addBoard, updateBoard, deleteBoard,
+      addStandard, addStandards,
       updateStandard, deleteStandard, pushWarning, markWarningRead, markAllWarningsRead, clearWarnings,
       unreadWarnings, replaceAll, resetAll, syncing, syncError,
     ],
