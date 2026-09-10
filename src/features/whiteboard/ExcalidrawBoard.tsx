@@ -148,7 +148,10 @@ export function ExcalidrawCanvas({
       {isFull &&
         createPortal(
           <div className="fixed inset-0 z-[120] bg-white" role="dialog" aria-modal="true">
-            <canvas className="absolute inset-0" />
+            {/* Bungkus eksplisit 100% tinggi — Excalidraw mengukur parent-nya. */}
+            <div className="absolute inset-0">
+              <CanvasInstance onReady={handleReady} onChange={handleChange} />
+            </div>
             {/* Tombol Tutup — satu-satunya cara keluar mode full screen. */}
             <button
               type="button"
