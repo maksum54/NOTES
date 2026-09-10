@@ -6,7 +6,7 @@ import { EmptyState, GlassButton, GlassCard, GlassInput, Spinner } from '@/compo
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ChatBubble } from './TaskDetail'
 import { SendIcon, SparkIcon, TrashIcon } from '@/components/icons'
-import { assistantSystemPrompt, chat, isAiReady } from '@/lib/ai'
+import { assistantSystemPrompt, chatStream, isAiReady } from '@/lib/ai'
 import { readJSON, writeJSON } from '@/lib/storage'
 import { nowISO, uid } from '@/lib/utils'
 import type { ChatMessage } from '@/types'
@@ -19,19 +19,26 @@ export function AssistantPage() {
     readJSON<ChatMessage[]>('assistantChat', []),
   )
   const [prompt, setPrompt] = useState('')
-  const [thinking, setThinking] = useState(false)
+  const [streamText, setStreamText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
+  // Selama AI menyusun jawaban, streaming digabung ke daftar pesan supaya
+  // teks langsung terlihat kata demi kata tanpa menunggu jawaban utuh.
+  const visible: ChatMessage[] =
+    streamText !== null
+      ? [...messages, { id: '__streaming', role: 'assistant', content: streamText, createdAt: '' }]
+      : messages
+
   useEffect(() => {
-    writeJSON('assistantChat', messages)
+    if (streamText === null) writeJSON('assistantChat', messages)
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages])
+  }, [messages, streamText])
 
   const ask = async (e: FormEvent) => {
     e.preventDefault()
     const question = prompt.trim()
-    if (!question || thinking) return
+    if (!question || streamText !== null) return
     if (!isAiReady()) {
       setError(t('assistant.noKey'))
       return
@@ -43,15 +50,18 @@ export function AssistantPage() {
     ]
     setMessages(history)
     setPrompt('')
-    setThinking(true)
     setError(null)
+    setStreamText('')
 
     try {
-      const reply = await chat([
-        { role: 'system', content: assistantSystemPrompt({ standards: data.standards, lang }) },
-        // Batasi riwayat supaya prompt tidak membengkak tanpa batas.
-        ...history.slice(-16).map((m) => ({ role: m.role, content: m.content })),
-      ])
+      const reply = await chatStream(
+        [
+          { role: 'system', content: assistantSystemPrompt({ standards: data.standards, lang }) },
+          // Batasi riwayat supaya prompt tidak membengkak tanpa batas.
+          ...history.slice(-16).map((m) => ({ role: m.role, content: m.content })),
+        ],
+        { onDelta: (full) => setStreamText(full) },
+      )
       setMessages((prev) => [
         ...prev,
         { id: uid('msg'), role: 'assistant', content: reply, createdAt: nowISO() },
@@ -59,7 +69,7 @@ export function AssistantPage() {
     } catch (err) {
       setError(t('assistant.error', { msg: err instanceof Error ? err.message : 'unknown' }))
     } finally {
-      setThinking(false)
+      setStreamText(null)
     }
   }
 
@@ -77,9 +87,11 @@ export function AssistantPage() {
         }
       />
 
-      <GlassCard className="flex min-h-[60dvh] flex-col animate-fade-up">
+      {/* scrollbar-gutter: slot scrollbar dicadangkan dari awal, jadi lebar
+          konten tidak melompat saat "Sedang berpikir…" muncul/hilang. */}
+      <GlassCard className="flex min-h-[60dvh] flex-col animate-fade-up [scrollbar-gutter:stable]">
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {messages.length === 0 ? (
+          {visible.length === 0 ? (
             <EmptyState
               icon={<SparkIcon className="h-8 w-8" />}
               title={t('assistant.empty')}
@@ -96,17 +108,20 @@ export function AssistantPage() {
             />
           ) : (
             <ul className="space-y-2.5">
-              {messages.map((m) => (
+              {visible.map((m) => (
                 <ChatBubble key={m.id} message={m} />
               ))}
             </ul>
           )}
-          {thinking && (
-            <div className="mt-3 flex items-center gap-2 text-[13px] text-ink-faint">
-              <Spinner />
-              {t('assistant.thinking')}
-            </div>
-          )}
+          {/* Slot indicator tingginya tetap (min-h), jadi footer tidak naik-turun. */}
+          <div className="flex min-h-9 items-center gap-2 pt-3 text-[13px] text-ink-faint">
+            {streamText !== null && (!streamText || streamText.trim().length === 0) && (
+              <>
+                <Spinner />
+                {t('assistant.thinking')}
+              </>
+            )}
+          </div>
           <div ref={endRef} />
         </div>
 
@@ -121,14 +136,14 @@ export function AssistantPage() {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={t('assistant.placeholder')}
-            disabled={thinking}
+            disabled={streamText !== null}
           />
           <GlassButton
             type="submit"
             variant="primary"
             size="icon"
             className="h-[46px] w-[46px] shrink-0"
-            disabled={!prompt.trim() || thinking}
+            disabled={!prompt.trim() || streamText !== null}
             aria-label={t('task.send')}
           >
             <SendIcon className="h-[18px] w-[18px]" />

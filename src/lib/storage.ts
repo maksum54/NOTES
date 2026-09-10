@@ -14,6 +14,7 @@ const KEYS = {
   aiBaseUrl: 'notes.ai.baseUrl',
   driveToken: 'notes.drive.token',
   driveFileId: 'notes.drive.fileId',
+  driveStorageFolderId: 'notes.drive.storageFolderId',
   driveLastSync: 'notes.drive.lastSync',
   driveAuto: 'notes.drive.auto',
   assistantChat: 'notes.assistant.chat',

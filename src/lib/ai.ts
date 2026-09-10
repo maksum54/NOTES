@@ -93,7 +93,7 @@ interface CompletionResponse {
 /** Satu panggilan chat completion. */
 export async function chat(
   messages: AiMessage[],
-  opts: { temperature?: number; signal?: AbortSignal; maxTokens?: number } = {},
+  opts: { temperature?: number; signal?: AbortSignal; maxTokens?: number; onDelta?: (full: string) => void } = {},
 ): Promise<string> {
   const { apiKey, model, baseUrl } = getAiConfig()
   if (!apiKey) throw new AiError('missing-api-key')
@@ -110,7 +110,7 @@ export async function chat(
         model,
         messages,
         temperature: opts.temperature ?? 0.2,
-        max_tokens: opts.maxTokens ?? 1500,
+        max_tokens: opts.maxTokens ?? 4096,
       }),
       signal: opts.signal,
     })
@@ -137,7 +137,98 @@ export async function chat(
 
   const content = json.choices?.[0]?.message?.content
   if (typeof content !== 'string') throw new AiError('empty-response', res.status)
+  opts.onDelta?.(content.trim())
   return content.trim()
+}
+
+/**
+ * Chat completion dengan streaming (SSE) — jawaban mulai terlihat jauh lebih
+ * cepat karena tiap potongan teks langsung diteruskan lewat `onDelta`.
+ * Kalau endpoint tidak mendukung `stream: true`, otomatis jatuh ke `chat()`.
+ */
+export async function chatStream(
+  messages: AiMessage[],
+  opts: { temperature?: number; signal?: AbortSignal; maxTokens?: number; onDelta?: (full: string) => void } = {},
+): Promise<string> {
+  const { apiKey, model, baseUrl } = getAiConfig()
+  if (!apiKey) throw new AiError('missing-api-key')
+
+  let res: Response
+  try {
+    res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: opts.temperature ?? 0.2,
+        max_tokens: opts.maxTokens ?? 4096,
+        stream: true,
+      }),
+      signal: opts.signal,
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err
+    throw new AiError('network-error')
+  }
+
+  if (!res.ok) {
+    // Server menolak parameter stream (atau error lain) -> coba tanpa stream.
+    if (res.status === 400 || res.status === 422) {
+      return chat(messages, { ...opts, onDelta: undefined })
+    }
+    const text = await res.text()
+    let msg = `HTTP ${res.status}`
+    try {
+      msg = (JSON.parse(text) as CompletionResponse).error?.message || msg
+    } catch { /* biar pakai pesan default */ }
+    if (res.status === 404) {
+      throw new AiError(`HTTP 404 — endpoint tidak ditemukan. Cek Base URL (harus memuat /v1) dan Model ID.`, 404)
+    }
+    throw new AiError(msg, res.status)
+  }
+
+  if (!res.body) return chat(messages, { ...opts, onDelta: undefined })
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let full = ''
+  let done = false
+
+  while (!done) {
+    const { value, done: eof } = await reader.read()
+    if (eof) break
+    buffer += decoder.decode(value, { stream: true })
+
+    // Proses baris lengkap saja; sisa baris terpotong ditahan di buffer.
+    let nl: number
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).trim()
+      buffer = buffer.slice(nl + 1)
+      if (!line.startsWith('data:')) continue
+      const payload = line.slice(5).trim()
+      if (payload === '[DONE]') {
+        done = true
+        break
+      }
+      try {
+        const json = JSON.parse(payload) as { choices?: { delta?: { content?: string } }[] }
+        const delta = json.choices?.[0]?.delta?.content
+        if (typeof delta === 'string' && delta.length > 0) {
+          full += delta
+          opts.onDelta?.(full)
+        }
+      } catch { /* baris JSON rusak — lewati */ }
+    }
+  }
+
+  // Sebagian provider menulis jawaban penuh di field message, bukan delta.
+  if (full.trim().length === 0) return chat(messages, { ...opts, onDelta: undefined })
+  return full.trim()
 }
 
 /** Ping ringan untuk tombol "Tes Koneksi" di Pengaturan. */
@@ -261,7 +352,7 @@ export async function reviewSummary(args: {
       { role: 'system', content: REVIEW_SYSTEM },
       { role: 'user', content: user },
     ],
-    { temperature: 0.1, signal: args.signal, maxTokens: 1800 },
+    { temperature: 0.1, signal: args.signal, maxTokens: 4096 },
   )
 
   return parseReview(raw, args.summary, model)

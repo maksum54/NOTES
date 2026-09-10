@@ -13,7 +13,7 @@ import {
 } from '@/components/icons'
 import { compressImage, cx, formatDate, nowISO, uid } from '@/lib/utils'
 import { useBufferedText } from '@/lib/useBufferedText'
-import { assistantSystemPrompt, chat, isAiReady } from '@/lib/ai'
+import { assistantSystemPrompt, chatStream, isAiReady } from '@/lib/ai'
 import type { ChatMessage, TaskImage, TaskLink } from '@/types'
 
 /**
@@ -34,7 +34,7 @@ export function TaskDetailPage() {
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkForm, setLinkForm] = useState({ label: '', url: '' })
   const [prompt, setPrompt] = useState('')
-  const [thinking, setThinking] = useState(false)
+  const [streamText, setStreamText] = useState<string | null>(null)
   const [chatError, setChatError] = useState<string | null>(null)
   const [pendingDeleteImage, setPendingDeleteImage] = useState<TaskImage | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -103,7 +103,7 @@ export function TaskDetailPage() {
   const ask = async (e: FormEvent) => {
     e.preventDefault()
     const question = prompt.trim()
-    if (!question || thinking) return
+    if (!question || streamText !== null) return
     if (!isAiReady()) {
       setChatError(t('assistant.noKey'))
       return
@@ -113,8 +113,8 @@ export function TaskDetailPage() {
     const history = [...task.chat, userMsg]
     updateTask(ids, task.id, { chat: history })
     setPrompt('')
-    setThinking(true)
     setChatError(null)
+    setStreamText('')
 
     try {
       const context = [
@@ -127,10 +127,13 @@ export function TaskDetailPage() {
         .filter(Boolean)
         .join('\n')
 
-      const reply = await chat([
-        { role: 'system', content: assistantSystemPrompt({ standards: data.standards, lang, extraContext: context }) },
-        ...history.map((m) => ({ role: m.role, content: m.content })),
-      ])
+      const reply = await chatStream(
+        [
+          { role: 'system', content: assistantSystemPrompt({ standards: data.standards, lang, extraContext: context }) },
+          ...history.map((m) => ({ role: m.role, content: m.content })),
+        ],
+        { onDelta: (full) => setStreamText(full) },
+      )
 
       updateTask(ids, task.id, {
         chat: [...history, { id: uid('msg'), role: 'assistant', content: reply, createdAt: nowISO() }],
@@ -138,7 +141,7 @@ export function TaskDetailPage() {
     } catch (err) {
       setChatError(t('assistant.error', { msg: err instanceof Error ? err.message : 'unknown' }))
     } finally {
-      setThinking(false)
+      setStreamText(null)
     }
   }
 
@@ -321,24 +324,36 @@ export function TaskDetailPage() {
             )}
           </div>
 
-          {task.chat.length === 0 ? (
-            <p className="rounded-2xl bg-glass-bg/15 px-4 py-3 text-[13px] leading-relaxed text-ink-faint">
-              {t('task.aiEmpty')}
-            </p>
-          ) : (
-            <ul className="mb-3 space-y-2.5">
-              {task.chat.map((m) => (
-                <ChatBubble key={m.id} message={m} />
-              ))}
-            </ul>
-          )}
+          {(() => {
+            const visible =
+              streamText !== null
+                ? [...task.chat, { id: '__streaming', role: 'assistant' as const, content: streamText, createdAt: '' }]
+                : task.chat
+            if (visible.length === 0) {
+              return (
+                <p className="rounded-2xl bg-glass-bg/15 px-4 py-3 text-[13px] leading-relaxed text-ink-faint">
+                  {t('task.aiEmpty')}
+                </p>
+              )
+            }
+            return (
+              <ul className="mb-3 space-y-2.5">
+                {visible.map((m) => (
+                  <ChatBubble key={m.id} message={m} />
+                ))}
+              </ul>
+            )
+          })()}
 
-          {thinking && (
-            <div className="mb-3 flex items-center gap-2 text-[13px] text-ink-faint">
-              <Spinner />
-              {t('assistant.thinking')}
-            </div>
-          )}
+          {/* Slot tinggi tetap: posisi form input tidak melompat. */}
+          <div className="flex min-h-9 items-center gap-2 text-[13px] text-ink-faint">
+            {streamText !== null && (!streamText || streamText.trim().length === 0) && (
+              <>
+                <Spinner />
+                {t('assistant.thinking')}
+              </>
+            )}
+          </div>
           {chatError && (
             <p className="mb-3 rounded-2xl border border-danger/25 bg-danger/10 px-3.5 py-2.5 text-[12.5px] text-danger">
               {chatError}
@@ -350,14 +365,14 @@ export function TaskDetailPage() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={t('task.aiPlaceholder')}
-              disabled={thinking}
+              disabled={streamText !== null}
             />
             <GlassButton
               type="submit"
               variant="primary"
               size="icon"
               className="h-[46px] w-[46px] shrink-0"
-              disabled={!prompt.trim() || thinking}
+              disabled={!prompt.trim() || streamText !== null}
               aria-label={t('task.send')}
             >
               <SendIcon className="h-[18px] w-[18px]" />

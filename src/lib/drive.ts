@@ -144,6 +144,7 @@ export async function disconnectDrive(): Promise<void> {
   const token = readToken()
   removeRaw('driveToken')
   removeRaw('driveFileId')
+  removeRaw('driveStorageFolderId')
   if (!token) return
   try {
     const accounts = await loadGis()
@@ -248,4 +249,174 @@ export async function restoreFromDrive(): Promise<AppData | null> {
   const data = (await res.json()) as AppData
   writeRaw('driveLastSync', new Date().toISOString())
   return data
+}
+
+/* ============================================================
+   STORAGE PRIBADI — folder "NOTES Storage" di Drive user.
+   Upload/download file apa saja (zip, excel, dokumen, dll).
+   Scope tetap drive.file: folder ini dibuat oleh app, jadi
+   hanya folder ini (bukan seluruh Drive) yang bisa disentuh.
+   ============================================================ */
+
+export const STORAGE_FOLDER_NAME = 'NOTES Storage'
+
+interface DriveNode {
+  id: string
+  name: string
+  mimeType?: string
+  size?: string
+  modifiedTime?: string
+}
+
+async function folderStillExists(id: string): Promise<boolean> {
+  try {
+    const res = await driveFetch(
+      `https://www.googleapis.com/drive/v3/files/${id}?fields=id,trashed`,
+    )
+    if (!res.ok) return false
+    const json = (await res.json()) as { trashed?: boolean }
+    return !json.trashed
+  } catch {
+    return false
+  }
+}
+
+/** Ambil (atau buat) folder NOTES Storage di root Drive user. */
+export async function ensureStorageFolder(): Promise<string> {
+  const cached = readRaw('driveStorageFolderId')
+  if (cached && (await folderStillExists(cached))) return cached
+
+  const query = encodeURIComponent(
+    `name='${STORAGE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+  )
+  const res = await driveFetch(
+    `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1`,
+  )
+  if (!res.ok) throw new Error(`drive-list-failed-${res.status}`)
+  const json = (await res.json()) as { files?: { id: string }[] }
+
+  let id = json.files?.[0]?.id
+  if (!id) {
+    const create = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: STORAGE_FOLDER_NAME,
+        mimeType: 'application/vnd.google-apps.folder',
+      }),
+    })
+    if (!create.ok) throw new Error(`drive-folder-failed-${create.status}`)
+    id = ((await create.json()) as { id?: string }).id
+  }
+  if (!id) throw new Error('drive-folder-missing')
+  writeRaw('driveStorageFolderId', id)
+  return id
+}
+
+export interface StorageFile {
+  id: string
+  name: string
+  size: number
+  mimeType: string
+  modifiedTime: string
+}
+
+/** Daftar file di dalam folder NOTES Storage. */
+export async function listStorageFiles(): Promise<StorageFile[]> {
+  const folderId = await ensureStorageFolder()
+  const query = encodeURIComponent(`'${folderId}' in parents and trashed=false`)
+  const res = await driveFetch(
+    `https://www.googleapis.com/drive/v3/files?q=${query}` +
+      `&fields=files(id,name,size,mimeType,modifiedTime)&pageSize=200&orderBy=modifiedTime desc`,
+  )
+  if (!res.ok) throw new Error(`drive-list-failed-${res.status}`)
+  const json = (await res.json()) as { files?: DriveNode[] }
+  return (json.files ?? []).map((f) => ({
+    id: f.id,
+    name: f.name,
+    size: Number(f.size ?? 0),
+    mimeType: f.mimeType ?? 'application/octet-stream',
+    modifiedTime: f.modifiedTime ?? '',
+  }))
+}
+
+/**
+ * Unggah satu file ke folder NOTES Storage memakai resumable upload,
+ * supaya ukuran bebas (zip besar pun jalan) dan tahan jaringan kurang stabil.
+ */
+export async function uploadStorageFile(
+  file: File,
+  opts: { signal?: AbortSignal; onProgress?: (pct: number) => void } = {},
+): Promise<void> {
+  const folderId = await ensureStorageFolder()
+
+  const init = await driveFetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Upload-Content-Type': file.type || 'application/octet-stream',
+        'X-Upload-Content-Length': String(file.size),
+      },
+      body: JSON.stringify({ name: file.name, parents: [folderId] }),
+      signal: opts.signal,
+    },
+  )
+  if (!init.ok) throw new Error(`drive-upload-failed-${init.status}`)
+  const uploadUrl = init.headers.get('location') ?? init.headers.get('Location')
+  if (!uploadUrl) throw new Error('drive-upload-no-url')
+
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', uploadUrl)
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) opts.onProgress?.(Math.round((e.loaded / e.total) * 100))
+    }
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`drive-upload-failed-${xhr.status}`)))
+    xhr.onerror = () => reject(new Error('network-error'))
+    xhr.onabort = () => reject(new DOMException('aborted', 'AbortError'))
+    opts.signal?.addEventListener('abort', () => xhr.abort(), { once: true })
+    xhr.send(file)
+  })
+}
+
+/** Unduh satu file dari NOTES Storage lalu simpan ke perangkat. */
+export async function downloadStorageFile(file: StorageFile): Promise<void> {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`)
+  if (!res.ok) throw new Error(`drive-download-failed-${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = file.name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+/** Hapus satu file dari NOTES Storage (pindah ke trash Drive). */
+export async function deleteStorageFile(id: string): Promise<void> {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}`, { method: 'DELETE' })
+  if (!res.ok && res.status !== 204) throw new Error(`drive-delete-failed-${res.status}`)
+}
+
+/** Kuota Drive user — null kalau Google tidak mengizinkan membacanya. */
+export interface DriveQuota {
+  limitBytes: number | null
+  usedBytes: number
+}
+
+export async function driveQuota(): Promise<DriveQuota | null> {
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota')
+  if (!res.ok) return null
+  const json = (await res.json()) as { storageQuota?: { limit?: string; usage?: string } }
+  const q = json.storageQuota
+  if (!q) return null
+  return {
+    limitBytes: q.limit ? Number(q.limit) : null,
+    usedBytes: Number(q.usage ?? 0),
+  }
 }

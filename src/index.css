@@ -9,8 +9,10 @@
    ============================================================ */
 @layer base {
   :root {
+    /* Tema terang bersih: latar putih, panel putih flat, aksen biru —
+       seperti aplikasi notes klasik (sidebar abu muda + panel putih). */
     --glass-bg: 255 255 255;
-    --glass-border: 255 255 255;
+    --glass-border: 226 230 238;
     --glass-highlight: 255 255 255;
     --shadow: 24 32 60;
 
@@ -26,16 +28,16 @@
     --danger: 226 62 62;
     --info: 92 120 240;
 
-    --glass-alpha: 0.62;
-    --glass-border-alpha: 0.65;
+    --glass-alpha: 0.92;
+    --glass-border-alpha: 0.85;
 
-    --page-1: 232 240 254;
-    --page-2: 244 238 254;
-    --page-3: 232 250 250;
+    --page-1: 250 250 252;
+    --page-2: 247 248 251;
+    --page-3: 252 252 253;
 
-    --blob-1: 96 160 255;
-    --blob-2: 168 132 255;
-    --blob-3: 86 214 214;
+    --blob-1: 214 228 252;
+    --blob-2: 226 220 250;
+    --blob-3: 208 240 240;
   }
 
   .dark {
@@ -160,6 +162,14 @@
   .dark .aurora-blob {
     opacity: 0.42;
   }
+  /* Tema terang: blob nyaris tak terlihat — latar mendekati putih polos. */
+  html:not(.dark) .aurora-blob {
+    opacity: 0.14;
+    filter: blur(120px);
+  }
+  html:not(.dark) .aurora::after {
+    opacity: 0.2;
+  }
 
   /* Panel kaca dasar */
   .glass {
@@ -180,6 +190,19 @@
       0 8px 32px -8px rgb(0 0 0 / 0.55),
       inset 0 1px 0 0 rgb(var(--glass-highlight) / 0.12);
   }
+  /* Tema terang: panel putih hampir flat dengan bayangan halus,
+     meniru tampilan aplikasi notes klasik pada screenshot acuan. */
+  html:not(.dark) .glass {
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow:
+      0 1px 2px rgb(var(--shadow) / 0.05),
+      0 8px 24px -16px rgb(var(--shadow) / 0.14),
+      inset 0 1px 0 0 rgb(var(--glass-highlight) / 0.6);
+  }
+  html:not(.dark) .glass-sheen::before {
+    display: none;
+  }
 
   .glass-strong {
     background: linear-gradient(
@@ -198,6 +221,10 @@
     box-shadow:
       0 24px 64px -16px rgb(0 0 0 / 0.7),
       inset 0 1px 0 0 rgb(var(--glass-highlight) / 0.16);
+  }
+  html:not(.dark) .glass-strong {
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
   }
 
   /* Kilau tipis melintasi permukaan kaca, khas material Apple */

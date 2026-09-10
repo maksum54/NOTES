@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { cx } from '@/lib/utils'
 import { useLang } from '@/context/LangContext'
@@ -7,8 +7,8 @@ import { useAuth } from '@/context/AuthContext'
 import { useData } from '@/context/DataContext'
 import { GlassButton } from '@/components/glass/Glass'
 import {
-  BellIcon, BookIcon, FolderIcon, GearIcon, GlobeIcon, HomeIcon,
-  MoonIcon, MonitorIcon, OfflineIcon, SparkIcon, SunIcon,
+  BellIcon, BookIcon, CloudIcon, FolderIcon, GearIcon, GlobeIcon, HomeIcon,
+  MoonIcon, MonitorIcon, OfflineIcon, SparkIcon, SunIcon, TaskIcon,
 } from '@/components/icons'
 import { InstallPrompt } from './InstallPrompt'
 
@@ -23,7 +23,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { t, lang, toggle: toggleLang } = useLang()
   const { theme, setTheme } = useTheme()
   const { account } = useAuth()
-  const { unreadWarnings } = useData()
+  const { data, unreadWarnings } = useData()
+
+  // Badge jumlah task yang belum selesai di seluruh project.
+  const openTaskCount = useMemo(
+    () =>
+      data.projects.reduce(
+        (n, p) =>
+          n + p.buildings.reduce((m, b) => m + b.tasks.filter((t) => t.status === 'belum').length, 0),
+        0,
+      ),
+    [data.projects],
+  )
   const location = useLocation()
   const [online, setOnline] = useState(() => navigator.onLine)
 
@@ -46,9 +57,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const items: NavItem[] = [
     { to: '/', labelKey: 'nav.dashboard', icon: HomeIcon },
     { to: '/projects', labelKey: 'nav.projects', icon: FolderIcon },
+    { to: '/tasks', labelKey: 'nav.tasks', icon: TaskIcon, badge: openTaskCount },
     { to: '/standards', labelKey: 'nav.standards', icon: BookIcon },
     { to: '/warnings', labelKey: 'nav.warnings', icon: BellIcon, badge: unreadWarnings },
     { to: '/assistant', labelKey: 'nav.assistant', icon: SparkIcon },
+    { to: '/storage', labelKey: 'nav.storage', icon: CloudIcon },
     { to: '/settings', labelKey: 'nav.settings', icon: GearIcon },
   ]
 

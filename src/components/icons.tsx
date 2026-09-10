@@ -157,6 +157,13 @@ export const CloudIcon = (p: P) => (
   </Base>
 )
 
+export const FileIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5Z" />
+    <path d="M13.5 3v5.5H19M9 13h6M9 17h6" />
+  </Base>
+)
+
 export const UploadIcon = (p: P) => (
   <Base {...p}>
     <path d="M12 16V4M8 7.5 12 3.5l4 4" />
@@ -237,6 +244,13 @@ export const ClockIcon = (p: P) => (
   <Base {...p}>
     <circle cx="12" cy="12" r="9" />
     <path d="M12 7v5.2l3.2 2" />
+  </Base>
+)
+
+export const TaskIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M9 6h11M9 12h11M9 18h11" />
+    <path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17" />
   </Base>
 )
 
