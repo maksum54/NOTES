@@ -86,6 +86,7 @@ export function migrate(input: unknown): AppData {
     version: DATA_VERSION,
     projects: Array.isArray(d.projects) ? d.projects : [],
     standards,
+    notes: Array.isArray(d.notes) ? d.notes : [],
     warnings: Array.isArray(d.warnings) ? d.warnings : [],
     boards: Array.isArray(d.boards) ? d.boards : [],
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : base.updatedAt,

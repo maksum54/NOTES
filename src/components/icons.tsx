@@ -372,6 +372,14 @@ export const PinIcon = (p: P) => (
   </Base>
 )
 
+/** Sticky note ala Google Keep: kertas dengan sudut terlipat. */
+export const NoteIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M20 5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8l6-6V5Z" />
+    <path d="M20 15h-6v6" />
+  </Base>
+)
+
 export const ArchiveIcon = (p: P) => (
   <Base {...p}>
     <path d="M3 4h18v4H3z" />

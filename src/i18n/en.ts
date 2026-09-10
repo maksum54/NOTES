@@ -13,6 +13,7 @@ export const en: Dict = {
     dashboard: 'Home',
     projects: 'Projects',
     tasks: 'Tasks',
+    notes: 'Notes',
     boards: 'Canvas',
     standards: 'Standard Notes',
     warnings: 'Warnings',
@@ -78,6 +79,15 @@ export const en: Dict = {
     allDoneHint: 'New tasks from each building will appear here.',
     noDone: 'No completed tasks yet.',
     showing: 'Showing {a}–{b} of {n} tasks',
+  },
+  notes: {
+    title: 'Notes',
+    subtitle: 'Free-form sticky notes, separate from tasks — click a card to edit, pin to keep on top.',
+    new: 'New Note',
+    pinned: 'Pinned',
+    others: 'Other Notes',
+    emptyTitle: 'No notes yet.',
+    emptyHint: 'Create a note for ideas, meeting notes, or anything — with colors, rich text, and reminders.',
   },
   boards: {
     title: 'Canvas',

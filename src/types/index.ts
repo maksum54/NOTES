@@ -204,11 +204,29 @@ export interface Warning {
   dedupeKey: string
 }
 
+/**
+ * CATATAN — sticky note bebas ala Google Keep, terpisah dari task.
+ * Bisa dipin, diberi warna latar, dan diarsipkan.
+ */
+export interface Note {
+  id: string
+  title: string
+  /** HTML kecil hasil editor rich text (sudah lolos sanitizer ketat). */
+  body: string
+  /** Warna latar kartu (hex) — null = putih. */
+  color: string | null
+  pinned: boolean
+  archived: boolean
+  createdAt: ISODate
+  updatedAt: ISODate
+}
+
 /** Seluruh isi database aplikasi — inilah yang di-backup ke Google Drive. */
 export interface AppData {
   version: number
   projects: Project[]
   standards: StandardNote[]
+  notes: Note[]
   warnings: Warning[]
   boards: CanvasBoard[]
   updatedAt: ISODate
@@ -221,6 +239,7 @@ export function emptyData(): AppData {
     version: DATA_VERSION,
     projects: [],
     standards: [],
+    notes: [],
     warnings: [],
     boards: [],
     updatedAt: new Date().toISOString(),

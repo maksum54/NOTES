@@ -11,6 +11,7 @@ export const id = {
     dashboard: 'Beranda',
     projects: 'Project',
     tasks: 'Task',
+    notes: 'Catatan',
     boards: 'Canvas',
     standards: 'Catatan Standard',
     warnings: 'Peringatan',
@@ -76,6 +77,15 @@ export const id = {
     allDoneHint: 'Task baru dari tiap building akan muncul di sini.',
     noDone: 'Belum ada task yang selesai.',
     showing: 'Menampilkan {a}–{b} dari {n} task',
+  },
+  notes: {
+    title: 'Catatan',
+    subtitle: 'Sticky note bebas, terpisah dari task — klik kartu untuk mengedit, pin untuk menempel.',
+    new: 'Catatan Baru',
+    pinned: 'Disematkan',
+    others: 'Catatan Lainnya',
+    emptyTitle: 'Belum ada catatan.',
+    emptyHint: 'Buat catatan untuk ide, catatan meeting, atau hal apa saja — lengkap dengan warna, format teks, dan pengingat.',
   },
   boards: {
     title: 'Canvas',

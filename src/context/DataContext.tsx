@@ -16,6 +16,7 @@ import {
   type CanvasBoard,
   type ChatMessage,
   type DoneStatus,
+  type Note,
   type Project,
   type StandardNote,
   type Task,
@@ -56,6 +57,10 @@ interface DataValue {
   updateTask: (ids: BuildingIds, taskId: string, patch: Partial<Task>) => void
   deleteTask: (ids: BuildingIds, taskId: string) => void
   toggleTask: (ids: BuildingIds, taskId: string) => void
+  /* -- catatan (sticky note bebas) -- */
+  addNote: (input: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>) => Note
+  updateNote: (id: string, patch: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned' | 'archived'>>) => void
+  deleteNote: (id: string) => void
   /* -- standard -- */
   addStandard: (note: Omit<StandardNote, 'id' | 'createdAt' | 'updatedAt'>) => StandardNote
   addStandards: (notes: StandardNote[]) => void
@@ -461,6 +466,46 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [mutate],
   )
 
+  /* ---------- catatan (sticky note bebas) ---------- */
+
+  const addNote = useCallback<DataValue['addNote']>(
+    (input) => {
+      const stamp = nowISO()
+      const note: Note = {
+        id: uid('nt'),
+        title: (input.title ?? '').trim(),
+        body: input.body ?? '',
+        color: input.color ?? null,
+        pinned: input.pinned ?? false,
+        archived: false,
+        createdAt: stamp,
+        updatedAt: stamp,
+      }
+      mutate((prev) => ({ ...prev, notes: [note, ...prev.notes] }))
+      return note
+    },
+    [mutate],
+  )
+
+  const updateNote = useCallback<DataValue['updateNote']>(
+    (id, patch) => {
+      mutate((prev) => ({
+        ...prev,
+        notes: prev.notes.map((n) =>
+          n.id === id ? { ...n, ...patch, id: n.id, updatedAt: nowISO() } : n,
+        ),
+      }))
+    },
+    [mutate],
+  )
+
+  const deleteNote = useCallback<DataValue['deleteNote']>(
+    (id) => {
+      mutate((prev) => ({ ...prev, notes: prev.notes.filter((n) => n.id !== id) }))
+    },
+    [mutate],
+  )
+
   /* ---------- standard ---------- */
 
   const addStandard = useCallback<DataValue['addStandard']>(
@@ -521,6 +566,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateTask,
       deleteTask,
       toggleTask,
+      addNote,
+      updateNote,
+      deleteNote,
       addBoard,
       updateBoard,
       deleteBoard,
@@ -540,7 +588,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }),
     [
       data, addProject, updateProject, deleteProject, addBuilding, updateBuilding, deleteBuilding,
-      runReview, addTask, updateTask, deleteTask, toggleTask, addBoard, updateBoard, deleteBoard,
+      runReview, addTask, updateTask, deleteTask, toggleTask, addNote, updateNote, deleteNote,
+      addBoard, updateBoard, deleteBoard,
       addStandard, addStandards,
       updateStandard, deleteStandard, pushWarning, markWarningRead, markAllWarningsRead, clearWarnings,
       unreadWarnings, replaceAll, resetAll, syncing, syncError,
