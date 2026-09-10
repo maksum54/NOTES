@@ -11,7 +11,7 @@ import {
   CloudIcon, DownloadIcon, GearIcon, GlobeIcon, LogoutIcon, MonitorIcon,
   MoonIcon, SparkIcon, SunIcon, TrashIcon, UploadIcon,
 } from '@/components/icons'
-import { AI_DEFAULTS, getAiConfig, setAiConfig, testConnection } from '@/lib/ai'
+import { AI_DEFAULTS, getAiConfig, normalizeBaseUrl, setAiConfig, testConnection } from '@/lib/ai'
 import {
   backupToDrive, connectDrive, disconnectDrive, driveLastSync, isAutoSyncOn,
   isDriveConfigured, isDriveConnected, restoreFromDrive, setAutoSync,
@@ -161,7 +161,7 @@ export function SettingsPage() {
         <GlassCard>
           <SectionTitle icon={<GearIcon className="h-[18px] w-[18px]" />} title={t('settings.appearance')} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('settings.theme')}>
+            <Field label={t('settings.theme')} group>
               <Segmented<ThemeChoice>
                 value={theme}
                 onChange={setTheme}
@@ -172,7 +172,7 @@ export function SettingsPage() {
                 ]}
               />
             </Field>
-            <Field label={t('settings.language')}>
+            <Field label={t('settings.language')} group>
               <Segmented<Lang>
                 value={lang}
                 onChange={setLang}
@@ -216,6 +216,9 @@ export function SettingsPage() {
                 <GlassInput
                   value={ai.baseUrl}
                   onChange={(e) => saveAi({ baseUrl: e.target.value })}
+                  // Rapikan saat selesai mengetik supaya user melihat URL yang
+                  // benar-benar dipanggil (mis. "/v1" yang otomatis ditambahkan).
+                  onBlur={(e) => saveAi({ baseUrl: normalizeBaseUrl(e.target.value) })}
                   placeholder={AI_DEFAULTS.baseUrl}
                 />
               </Field>

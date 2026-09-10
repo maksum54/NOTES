@@ -207,7 +207,7 @@ export function AreaDetailPage() {
                 onChange={(e) => updateArea(ids, { targetSubmitDate: e.target.value || null })}
               />
             </Field>
-            <Field label={t('common.status')}>
+            <Field label={t('common.status')} group>
               <Segmented<DoneStatus>
                 value={area.targetSubmitStatus}
                 onChange={(v) => updateArea(ids, { targetSubmitStatus: v })}

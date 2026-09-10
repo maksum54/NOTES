@@ -21,12 +21,37 @@ export interface AiConfig {
   baseUrl: string
 }
 
+/**
+ * Rapikan base URL yang diketik user.
+ *
+ * Endpoint yang dipanggil adalah `<base>/chat/completions`, jadi base HARUS
+ * sudah memuat prefix versi. Mengetik "https://api.vikey.ai" tanpa "/v1"
+ * menghasilkan HTTP 404 — kasus yang gampang sekali terjadi, jadi di sini
+ * "/v1" ditambahkan sendiri kalau base-nya masih polos (host saja).
+ */
+export function normalizeBaseUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, '')
+  if (!trimmed) return DEFAULT_BASE_URL
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  try {
+    const url = new URL(withProtocol)
+    // Path kosong ("/") berarti user hanya menulis host -> lengkapi dengan /v1.
+    if (url.pathname === '/' || url.pathname === '') {
+      url.pathname = '/v1'
+      return url.toString().replace(/\/+$/, '')
+    }
+    return withProtocol
+  } catch {
+    return withProtocol
+  }
+}
+
 export function getAiConfig(): AiConfig {
   return {
     // Key milik user (localStorage) menang atas key .env dev.
     apiKey: readRaw('aiKey') ?? ENV_KEY,
     model: readRaw('aiModel') || DEFAULT_MODEL,
-    baseUrl: readRaw('aiBaseUrl') || DEFAULT_BASE_URL,
+    baseUrl: normalizeBaseUrl(readRaw('aiBaseUrl') || DEFAULT_BASE_URL),
   }
 }
 
@@ -75,7 +100,7 @@ export async function chat(
 
   let res: Response
   try {
-    res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -104,6 +129,9 @@ export async function chat(
   }
 
   if (!res.ok) {
+    if (res.status === 404) {
+      throw new AiError(`HTTP 404 — endpoint tidak ditemukan. Cek Base URL (harus memuat /v1) dan Model ID.`, 404)
+    }
     throw new AiError(json.error?.message || `HTTP ${res.status}`, res.status)
   }
 

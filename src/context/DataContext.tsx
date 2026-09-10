@@ -159,10 +159,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [syncError, setSyncError] = useState<string | null>(null)
   const syncTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  /* Persist lokal setiap kali data berubah — localStorage-primary. */
+  /*
+   * Persist lokal — localStorage-primary.
+   * Ditunda sesaat karena menulis berarti men-serialize SELURUH database
+   * (termasuk gambar base64) secara sinkron. Kalau dijalankan tiap ketikan,
+   * mengetik di task yang punya gambar terasa berat sekali.
+   */
   useEffect(() => {
-    saveData(data)
+    const timer = setTimeout(() => saveData(data), 350)
+    return () => clearTimeout(timer)
   }, [data])
+
+  /* Jaring pengaman: paksa tulis saat tab ditutup/disembunyikan supaya
+     ketikan terakhir dalam jendela debounce tidak ikut hilang. */
+  const latest = useRef(data)
+  latest.current = data
+  useEffect(() => {
+    const flush = () => saveData(latest.current)
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onHide)
+      flush()
+    }
+  }, [])
 
   /* Backup ke Drive di-debounce, jadi ketikan cepat tidak memicu puluhan upload. */
   useEffect(() => {

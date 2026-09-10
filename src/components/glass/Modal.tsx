@@ -26,20 +26,39 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
   const { t } = useLang()
   const panelRef = useRef<HTMLDivElement>(null)
 
+  // onClose hampir selalu dikirim sebagai arrow inline, jadi identitasnya berubah
+  // tiap render. Disimpan di ref supaya tidak ikut jadi dependency effect di bawah.
+  const closeRef = useRef(onClose)
+  useEffect(() => {
+    closeRef.current = onClose
+  }, [onClose])
+
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') closeRef.current()
     }
     document.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    panelRef.current?.focus()
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
     }
-  }, [open, onClose])
+  }, [open])
+
+  // Fokus awal HANYA saat modal dibuka. Kalau ini ikut berjalan tiap render,
+  // fokus tercuri dari input setiap kali user menekan satu tombol.
+  useEffect(() => {
+    if (!open) return
+    const panel = panelRef.current
+    if (!panel) return
+    // Utamakan field pertama supaya user bisa langsung mengetik.
+    const first = panel.querySelector<HTMLElement>(
+      'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])',
+    )
+    ;(first ?? panel).focus()
+  }, [open])
 
   if (!open) return null
 

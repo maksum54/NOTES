@@ -12,6 +12,7 @@ import {
   CheckIcon, ImageIcon, LinkIcon, PenIcon, PlusIcon, SendIcon, SparkIcon, TrashIcon,
 } from '@/components/icons'
 import { compressImage, cx, formatDate, nowISO, uid } from '@/lib/utils'
+import { useBufferedText } from '@/lib/useBufferedText'
 import { assistantSystemPrompt, chat, isAiReady } from '@/lib/ai'
 import type { ChatMessage, TaskImage, TaskLink } from '@/types'
 
@@ -37,6 +38,12 @@ export function TaskDetailPage() {
   const [chatError, setChatError] = useState<string | null>(null)
   const [pendingDeleteImage, setPendingDeleteImage] = useState<TaskImage | null>(null)
   const [uploading, setUploading] = useState(false)
+
+  // Dipanggil tanpa syarat (sebelum early return) supaya urutan hook tetap stabil.
+  const currentTaskId = task?.id ?? ''
+  const descriptionField = useBufferedText(task?.description ?? '', (next) => {
+    if (currentTaskId) updateTask(ids, currentTaskId, { description: next })
+  })
 
   if (!found || !task) return <Navigate to="/projects" replace />
   const { project, building, area } = found
@@ -167,8 +174,7 @@ export function TaskDetailPage() {
             {task.dueDate && <Badge tone="neutral">{formatDate(task.dueDate, lang)}</Badge>}
           </div>
           <GlassTextarea
-            value={task.description}
-            onChange={(e) => updateTask(ids, task.id, { description: e.target.value })}
+            {...descriptionField}
             placeholder={t('task.descriptionPlaceholder')}
             rows={4}
           />

@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useId,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
@@ -117,18 +118,43 @@ interface FieldWrapProps {
   error?: string
   children: ReactNode
   className?: string
+  /**
+   * Pakai untuk kontrol MAJEMUK (mis. Segmented yang isinya banyak tombol).
+   *
+   * Tanpa ini, <label> otomatis terasosiasi ke kontrol pertama di dalamnya:
+   * screen reader membacakan nama yang kacau, dan mengklik teks label malah
+   * mengaktifkan tombol pertama — mis. klik "Tema" langsung mengubah ke Terang.
+   */
+  group?: boolean
 }
 
-export function Field({ label, hint, error, children, className }: FieldWrapProps) {
+export function Field({ label, hint, error, children, className, group }: FieldWrapProps) {
+  const labelId = useId()
+  const caption = error ? (
+    <span className="mt-1.5 block text-[12px] font-medium text-danger">{error}</span>
+  ) : hint ? (
+    <span className="mt-1.5 block text-[12px] leading-relaxed text-ink-faint">{hint}</span>
+  ) : null
+
+  if (group) {
+    return (
+      <div role="group" aria-labelledby={label ? labelId : undefined} className={cx('block', className)}>
+        {label && (
+          <span id={labelId} className="mb-1.5 block text-[13px] font-semibold text-ink-soft">
+            {label}
+          </span>
+        )}
+        {children}
+        {caption}
+      </div>
+    )
+  }
+
   return (
     <label className={cx('block', className)}>
       {label && <span className="mb-1.5 block text-[13px] font-semibold text-ink-soft">{label}</span>}
       {children}
-      {error ? (
-        <span className="mt-1.5 block text-[12px] font-medium text-danger">{error}</span>
-      ) : hint ? (
-        <span className="mt-1.5 block text-[12px] leading-relaxed text-ink-faint">{hint}</span>
-      ) : null}
+      {caption}
     </label>
   )
 }
