@@ -100,6 +100,7 @@ function TaskCard({ row, tone, renderDescription }: { row: TaskRow; tone: 'warn'
       onClick={() => navigate(href)}
       className={cx(
         'glass glass-hover flex h-full w-full flex-col gap-2 rounded-2xl p-4 text-left',
+        'shadow-[0_10px_30px_-12px_rgb(var(--shadow)/0.45)]',
         tone === 'ok' && 'opacity-75',
       )}
     >
@@ -122,9 +123,9 @@ function TaskCard({ row, tone, renderDescription }: { row: TaskRow; tone: 'warn'
         </span>
       </span>
 
-      {/* Deskripsi tampil utuh seperti aslinya. */}
+      {/* Deskripsi: maksimal ~7 baris, sisanya discroll di dalam kartu. */}
       {renderDescription && task.description && (
-        <span className="block whitespace-pre-wrap break-words rounded-xl bg-glass-bg/25 px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
+        <span className="block max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-glass-bg/25 px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
           {task.description}
         </span>
       )}

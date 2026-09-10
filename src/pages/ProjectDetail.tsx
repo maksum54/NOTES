@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import { Badge, EmptyState, Field, GlassButton, GlassCard, GlassInput, GlassTextarea, ProgressBar } from '@/components/glass/Glass'
@@ -12,6 +12,7 @@ import type { Building } from '@/types'
 /** NAMA PROJECT -> daftar NAMA BUILDING (nama bebas, bukan tiga area tetap). */
 export function ProjectDetailPage() {
   const { projectId = '' } = useParams()
+  const navigate = useNavigate()
   const { t, lang } = useLang()
   const { data, addBuilding, deleteBuilding } = useData()
   const project = data.projects.find((p) => p.id === projectId)
@@ -65,17 +66,27 @@ export function ProjectDetailPage() {
               building.lastReview?.findings.filter((f) => f.severity !== 'info').length ?? 0
             const href = `/projects/${project.id}/buildings/${building.id}`
             return (
-              <GlassCard key={building.id} hover className="flex flex-col gap-3">
+              <GlassCard
+                key={building.id}
+                hover
+                className="relative flex cursor-pointer flex-col gap-3"
+                role="link"
+                tabIndex={0}
+                aria-label={building.name}
+                onClick={() => navigate(href)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    navigate(href)
+                  }
+                }}
+              >
                 <div className="flex items-start gap-3">
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-info/15 text-info">
                     <BuildingIcon />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <Link to={href} className="block">
-                      <h2 className="truncate text-[16px] font-bold text-ink hover:text-accent">
-                        {building.name}
-                      </h2>
-                    </Link>
+                    <h2 className="truncate text-[16px] font-bold text-ink">{building.name}</h2>
                     {building.notes && (
                       <p className="line-clamp-2 text-[12.5px] leading-relaxed text-ink-faint">
                         {building.notes}
@@ -86,7 +97,10 @@ export function ProjectDetailPage() {
                     variant="ghost"
                     size="icon"
                     aria-label={t('projects.deleteBuilding')}
-                    onClick={() => setPendingDelete(building)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setPendingDelete(building)
+                    }}
                   >
                     <TrashIcon className="h-[18px] w-[18px] text-ink-faint hover:text-danger" />
                   </GlassButton>
@@ -125,13 +139,10 @@ export function ProjectDetailPage() {
                   <p className="text-[11.5px] text-ink-faint">{t('building.noTasks')}</p>
                 )}
 
-                <Link
-                  to={href}
-                  className="mt-auto flex items-center gap-1 pt-1 text-[13px] font-semibold text-accent hover:underline"
-                >
+                <span className="mt-auto flex items-center gap-1 pt-1 text-[13px] font-semibold text-accent">
                   {t('common.open')}
                   <ChevronRight className="h-4 w-4" />
-                </Link>
+                </span>
               </GlassCard>
             )
           })}

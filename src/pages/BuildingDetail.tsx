@@ -1,69 +1,39 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { findBuilding, useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import {
-  Badge, EmptyState, Field, GlassButton, GlassCard, GlassInput, GlassTextarea, ProgressBar,
+  Badge, Field, GlassButton, GlassCard, GlassInput, GlassTextarea,
 } from '@/components/glass/Glass'
 import { ConfirmDialog, Modal } from '@/components/glass/Modal'
 import { Segmented } from '@/components/glass/Segmented'
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
-  AlertIcon, BuildingIcon, CheckIcon, ChevronRight, ClockIcon, ImageIcon,
-  LinkIcon, PlusIcon, SparkIcon, TrashIcon,
+  CheckIcon, ChevronLeft, ChevronRight, ClockIcon, ImageIcon,
+  LinkIcon, PlusIcon, SparkIcon, TaskIcon, TrashIcon,
 } from '@/components/icons'
-import { cx, daysUntil, formatDate, formatDateTime } from '@/lib/utils'
-import { isAiReady } from '@/lib/ai'
-import type { DoneStatus, Finding, Task } from '@/types'
+import { cx, daysUntil, formatDate } from '@/lib/utils'
+import type { Building, DoneStatus, Project, Task } from '@/types'
 
 /**
- * Satu building. Inilah tempat SUMMARY CLIENT ditulis; menyimpannya
- * memicu review AI terhadap CATATAN STANDARD dan memunculkan WARNING.
+ * Satu building: TARGET SUBMIT plus daftar TASK berbentuk kartu berslider
+ * (tampilan sama dengan halaman Task, dan ikut ter-update saat task berubah).
  */
 export function BuildingDetailPage() {
   const { projectId = '', buildingId = '' } = useParams()
-  const { t, lang } = useLang()
-  const { data, updateBuilding, runReview, addTask, deleteTask, toggleTask } = useData()
+  const { t } = useLang()
+  const { data, updateBuilding, addTask, deleteTask } = useData()
 
   const ids = useMemo(() => ({ projectId, buildingId }), [projectId, buildingId])
   const found = useMemo(() => findBuilding(data, ids), [data, ids])
 
-  const [summary, setSummary] = useState(found?.building.summaryClient ?? '')
-  const [dirty, setDirty] = useState(false)
-  const [reviewing, setReviewing] = useState(false)
-  const [reviewError, setReviewError] = useState<string | null>(null)
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskForm, setTaskForm] = useState({ title: '', description: '', dueDate: '' })
   const [pendingDelete, setPendingDelete] = useState<Task | null>(null)
 
   if (!found) return <Navigate to="/projects" replace />
   const { project, building } = found
-
-  const base = `/projects/${project.id}/buildings/${building.id}`
-  const doneCount = building.tasks.filter((task) => task.status === 'sudah').length
   const left = daysUntil(building.targetSubmitDate)
-
-  const saveSummary = () => {
-    updateBuilding(ids, { summaryClient: summary })
-    setDirty(false)
-  }
-
-  /** Simpan dulu, baru minta AI mereview — sesuai alur di flowchart. */
-  const handleReview = async () => {
-    if (!summary.trim()) return
-    updateBuilding(ids, { summaryClient: summary })
-    setDirty(false)
-    setReviewing(true)
-    setReviewError(null)
-    try {
-      await runReview(ids)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'unknown'
-      setReviewError(msg === 'missing-api-key' ? t('assistant.noKey') : t('assistant.error', { msg }))
-    } finally {
-      setReviewing(false)
-    }
-  }
 
   const submitTask = (e: FormEvent) => {
     e.preventDefault()
@@ -87,102 +57,6 @@ export function BuildingDetailPage() {
       />
 
       <div className="stack-fade space-y-4">
-        {/* ---------- SUMMARY CLIENT ---------- */}
-        <GlassCard>
-          <div className="mb-3 flex items-center gap-2">
-            <BuildingIcon className="h-[18px] w-[18px] text-ink-soft" />
-            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('building.summaryClient')}</h2>
-            {dirty && <Badge tone="warn">•</Badge>}
-          </div>
-
-          <p className="mb-3 rounded-2xl border border-accent/20 bg-accent/8 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-soft">
-            {t('building.summaryHint')}
-          </p>
-
-          <GlassTextarea
-            value={summary}
-            onChange={(e) => {
-              setSummary(e.target.value)
-              setDirty(true)
-            }}
-            onBlur={() => dirty && saveSummary()}
-            rows={6}
-            placeholder={t('building.summaryPlaceholder')}
-          />
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <GlassButton
-              variant="primary"
-              onClick={handleReview}
-              loading={reviewing}
-              disabled={!summary.trim()}
-              icon={!reviewing && <SparkIcon className="h-4 w-4" />}
-            >
-              {reviewing ? t('building.reviewing') : t('building.reviewNow')}
-            </GlassButton>
-            {dirty && (
-              <GlassButton variant="glass" onClick={saveSummary}>
-                {t('common.save')}
-              </GlassButton>
-            )}
-            {!isAiReady() && (
-              <Link to="/settings" className="text-[12.5px] font-semibold text-accent hover:underline">
-                {t('assistant.goSettings')}
-              </Link>
-            )}
-            {data.standards.length === 0 && (
-              <span className="text-[12px] text-ink-faint">{t('ai.noStandards')}</span>
-            )}
-          </div>
-
-          {reviewError && (
-            <p className="mt-3 rounded-2xl border border-danger/25 bg-danger/10 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-danger">
-              {reviewError}
-            </p>
-          )}
-        </GlassCard>
-
-        {/* ---------- HASIL REVIEW AI ---------- */}
-        <GlassCard>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <SparkIcon className="h-[18px] w-[18px] text-ink-soft" />
-            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('building.lastReview')}</h2>
-            {building.lastReview && (
-              <span className="text-[11.5px] text-ink-faint">
-                {formatDateTime(building.lastReview.createdAt, lang)} · {building.lastReview.model}
-              </span>
-            )}
-          </div>
-
-          {!building.lastReview ? (
-            <EmptyState icon={<SparkIcon className="h-7 w-7" />} title={t('building.neverReviewed')} />
-          ) : (
-            <div className="space-y-3">
-              {building.lastReview.verdict && (
-                <p className="rounded-2xl bg-glass-bg/20 px-4 py-3 text-[13.5px] leading-relaxed text-ink-soft">
-                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-ink-faint">
-                    {t('building.verdict')}
-                  </span>
-                  {building.lastReview.verdict}
-                </p>
-              )}
-
-              {building.lastReview.findings.length === 0 ? (
-                <div className="flex items-center gap-2 rounded-2xl border border-ok/25 bg-ok/10 px-4 py-3 text-[13.5px] font-semibold text-ok">
-                  <CheckIcon className="h-[18px] w-[18px]" />
-                  {t('building.noFindings')}
-                </div>
-              ) : (
-                <ul className="space-y-2.5">
-                  {building.lastReview.findings.map((f) => (
-                    <FindingCard key={f.id} finding={f} />
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </GlassCard>
-
         {/* ---------- TARGET SUBMIT ---------- */}
         <GlassCard>
           <div className="mb-3 flex items-center gap-2">
@@ -217,108 +91,12 @@ export function BuildingDetailPage() {
           </div>
         </GlassCard>
 
-        {/* ---------- TASK (TUGAS) ---------- */}
-        <GlassCard>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <CheckIcon className="h-[18px] w-[18px] text-ink-soft" />
-            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('building.tasks')}</h2>
-            <GlassButton
-              variant="primary"
-              size="sm"
-              onClick={() => setTaskOpen(true)}
-              icon={<PlusIcon className="h-4 w-4" />}
-            >
-              {t('building.newTask')}
-            </GlassButton>
-          </div>
-
-          {building.tasks.length === 0 ? (
-            <EmptyState icon={<CheckIcon className="h-7 w-7" />} title={t('building.noTasks')} />
-          ) : (
-            <>
-              <div className="mb-3 flex items-center gap-3">
-                <ProgressBar
-                  value={(doneCount / building.tasks.length) * 100}
-                  tone={doneCount === building.tasks.length ? 'ok' : 'accent'}
-                />
-                <span className="shrink-0 text-[12px] font-semibold text-ink-faint">
-                  {t('building.taskCount', { done: doneCount, total: building.tasks.length })}
-                </span>
-              </div>
-
-              <ul className="-mx-2 space-y-0.5">
-                {building.tasks.map((task) => {
-                  const taskLeft = daysUntil(task.dueDate)
-                  return (
-                    <li key={task.id} className="flex items-center gap-2.5 rounded-2xl px-2 py-2 hover:bg-glass-bg/20">
-                      <button
-                        type="button"
-                        onClick={() => toggleTask(ids, task.id)}
-                        aria-label={task.status === 'sudah' ? t('task.markUndone') : t('task.markDone')}
-                        className={cx(
-                          'grid h-6 w-6 shrink-0 place-items-center rounded-pill border-2 transition-all',
-                          task.status === 'sudah'
-                            ? 'border-ok bg-ok text-white'
-                            : 'border-ink-faint/50 text-transparent hover:border-accent',
-                        )}
-                      >
-                        <CheckIcon className="h-3.5 w-3.5" strokeWidth={3} />
-                      </button>
-
-                      <Link to={`${base}/tasks/${task.id}`} className="min-w-0 flex-1">
-                        <p
-                          className={cx(
-                            'truncate text-[14px] font-semibold',
-                            task.status === 'sudah' ? 'text-ink-faint line-through' : 'text-ink',
-                          )}
-                        >
-                          {task.title}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-faint">
-                          {task.dueDate && (
-                            <span className={taskLeft !== null && taskLeft < 0 && task.status === 'belum' ? 'text-danger' : ''}>
-                              {formatDate(task.dueDate, lang)}
-                            </span>
-                          )}
-                          {task.images.length > 0 && (
-                            <span className="inline-flex items-center gap-0.5">
-                              <ImageIcon className="h-3 w-3" />
-                              {task.images.length}
-                            </span>
-                          )}
-                          {task.links.length > 0 && (
-                            <span className="inline-flex items-center gap-0.5">
-                              <LinkIcon className="h-3 w-3" />
-                              {task.links.length}
-                            </span>
-                          )}
-                          {task.chat.length > 0 && (
-                            <span className="inline-flex items-center gap-0.5">
-                              <SparkIcon className="h-3 w-3" />
-                              {task.chat.length}
-                            </span>
-                          )}
-                        </div>
-                      </Link>
-
-                      <GlassButton
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t('task.deleteTask')}
-                        onClick={() => setPendingDelete(task)}
-                      >
-                        <TrashIcon className="h-4 w-4 text-ink-faint hover:text-danger" />
-                      </GlassButton>
-                      <Link to={`${base}/tasks/${task.id}`} aria-label={t('common.open')}>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" />
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          )}
-        </GlassCard>
+        {/* ---------- TASK (TUGAS) — kartu berslider, selalu membaca task terbaru ---------- */}
+        <BuildingTaskSection
+          rows={building.tasks.map((task) => ({ project, building, task }))}
+          onNew={() => setTaskOpen(true)}
+          onDelete={setPendingDelete}
+        />
       </div>
 
       <Modal
@@ -375,29 +153,174 @@ export function BuildingDetailPage() {
   )
 }
 
-function FindingCard({ finding }: { finding: Finding }) {
+/** Jumlah task kartu yang tampil per "halaman" slider — sama dengan halaman Task. */
+const PAGE_SIZE = 5
+
+interface TaskRow {
+  project: Project
+  building: Building
+  task: Task
+}
+
+/**
+ * Section task satu building, tampilannya persis section task di halaman Task:
+ * kartu yang bisa diklik ke detail, maksimal 5 per baris, sisanya lewat slider.
+ * Karena `rows` selalu diturunkan dari `building.tasks` terbaru, kartu ikut
+ * ter-update otomatis saat task berubah.
+ */
+function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew: () => void; onDelete: (task: Task) => void }) {
   const { t } = useLang()
-  const tone =
-    finding.severity === 'critical'
-      ? { border: 'border-danger/25', bg: 'bg-danger/8', text: 'text-danger', badge: 'danger' as const }
-      : finding.severity === 'warning'
-        ? { border: 'border-warn/25', bg: 'bg-warn/8', text: 'text-warn', badge: 'warn' as const }
-        : { border: 'border-info/25', bg: 'bg-info/8', text: 'text-info', badge: 'info' as const }
+  const [page, setPage] = useState(0)
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount - 1)
+  const visible = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
   return (
-    <li className={cx('rounded-2xl border px-4 py-3', tone.border, tone.bg)}>
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <AlertIcon className={cx('h-4 w-4 shrink-0', tone.text)} />
-        <Badge tone={tone.badge}>{t(`warnings.severity.${finding.severity}`)}</Badge>
-        <span className="font-mono text-[11.5px] font-semibold text-ink-soft">{finding.reference}</span>
+    <GlassCard>
+      <div className="mb-3 flex items-center gap-2">
+        <TaskIcon className="h-[18px] w-[18px] text-ink-soft" />
+        <h2 className="flex-1 text-[15px] font-bold text-ink">{t('building.tasks')}</h2>
+
+        {/* Slider: muncul hanya kalau task lebih dari 5. */}
+        {rows.length > PAGE_SIZE && (
+          <div className="flex items-center gap-1">
+            <GlassButton
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label={t('common.back')}
+              disabled={safePage === 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </GlassButton>
+            <span className="min-w-14 text-center text-[12px] font-bold text-ink-faint">
+              {safePage + 1}/{pageCount}
+            </span>
+            <GlassButton
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label={t('common.open')}
+              disabled={safePage >= pageCount - 1}
+              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </GlassButton>
+          </div>
+        )}
+        <Badge tone="warn">{rows.filter((r) => r.task.status === 'belum').length}</Badge>
+        <GlassButton variant="primary" size="sm" onClick={onNew} icon={<PlusIcon className="h-4 w-4" />}>
+          {t('building.newTask')}
+        </GlassButton>
       </div>
-      <p className="text-[13.5px] font-semibold leading-relaxed text-ink">{finding.issue}</p>
-      {finding.recommendation && (
-        <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-soft">
-          <span className="font-bold text-ink-faint">{t('building.recommendation')}: </span>
-          {finding.recommendation}
-        </p>
+
+      {rows.length === 0 ? (
+        <p className="py-8 text-center text-[13px] text-ink-faint">{t('building.noTasks')}</p>
+      ) : (
+        <>
+          {/* Grid: 5 kartu muat satu baris di layar lebar, otomatis turun di layar kecil. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {visible.map((row) => (
+              <BuildingTaskCard key={row.task.id} row={row} onDelete={onDelete} />
+            ))}
+          </div>
+          {rows.length > PAGE_SIZE && (
+            <p className="mt-2 text-center text-[11.5px] text-ink-faint">
+              {t('tasks.showing', { a: safePage * PAGE_SIZE + 1, b: Math.min((safePage + 1) * PAGE_SIZE, rows.length), n: rows.length })}
+            </p>
+          )}
+        </>
       )}
-    </li>
+    </GlassCard>
+  )
+}
+
+/** Satu kartu task di halaman building — sama seperti TaskCard di halaman Task, plus hapus. */
+function BuildingTaskCard({ row, onDelete }: { row: TaskRow; onDelete: (task: Task) => void }) {
+  const { t, lang } = useLang()
+  const navigate = useNavigate()
+  const { project, building, task } = row
+  const href = `/projects/${project.id}/buildings/${building.id}/tasks/${task.id}`
+  const left = daysUntil(task.dueDate)
+  const done = task.status === 'sudah'
+
+  return (
+    <div className="relative h-full">
+      <button
+        type="button"
+        onClick={() => navigate(href)}
+        className={cx(
+          'glass glass-hover flex h-full w-full flex-col gap-2 rounded-2xl p-4 text-left',
+          'shadow-[0_10px_30px_-12px_rgb(var(--shadow)/0.45)]',
+          done && 'opacity-75',
+        )}
+      >
+        <span className="flex w-full items-start gap-2.5">
+          <span
+            className={cx(
+              'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-pill border',
+              done ? 'border-ok/50 bg-ok/15 text-ok' : 'border-ink/20 text-transparent',
+            )}
+          >
+            <CheckIcon className="h-3 w-3" />
+          </span>
+          <span
+            className={cx(
+              'min-w-0 flex-1 break-words text-[14px] font-bold leading-snug text-ink',
+              done && 'line-through',
+            )}
+          >
+            {task.title}
+          </span>
+        </span>
+
+        {/* Deskripsi: maksimal ~7 baris, sisanya discroll di dalam kartu. */}
+        {task.description && (
+          <span className="block max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-glass-bg/25 px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
+            {task.description}
+          </span>
+        )}
+
+        <span className="mt-auto flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-ink-faint">
+          {task.dueDate && (
+            <Badge tone={done ? 'neutral' : left !== null && left < 0 ? 'danger' : 'neutral'}>
+              {formatDate(task.dueDate, lang)}
+            </Badge>
+          )}
+          <span className="ml-auto inline-flex items-center gap-1">
+            {task.images.length > 0 && (
+              <span className="inline-flex items-center gap-0.5">
+                <ImageIcon className="h-3 w-3" />
+                {task.images.length}
+              </span>
+            )}
+            {task.links.length > 0 && (
+              <span className="inline-flex items-center gap-0.5">
+                <LinkIcon className="h-3 w-3" />
+                {task.links.length}
+              </span>
+            )}
+            {task.chat.length > 0 && (
+              <span className="inline-flex items-center gap-0.5">
+                <SparkIcon className="h-3 w-3" />
+                {task.chat.length}
+              </span>
+            )}
+          </span>
+        </span>
+      </button>
+
+      {/* Hapus di pojok kartu — di luar <button> supaya klik tidak ikut membuka task. */}
+      <GlassButton
+        variant="ghost"
+        size="icon"
+        aria-label={t('task.deleteTask')}
+        onClick={() => onDelete(task)}
+        className="!h-7 !w-7 absolute right-1.5 top-1.5 z-10"
+      >
+        <TrashIcon className="h-3.5 w-3.5 text-ink-faint hover:text-danger" />
+      </GlassButton>
+    </div>
   )
 }
