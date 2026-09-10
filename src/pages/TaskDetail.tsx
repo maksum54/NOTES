@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { findBuilding, useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
@@ -7,14 +7,20 @@ import {
 } from '@/components/glass/Glass'
 import { ConfirmDialog, Modal } from '@/components/glass/Modal'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { MarkupBoard, StrokeLayer } from '@/features/whiteboard/MarkupBoard'
 import {
-  CheckIcon, ImageIcon, LinkIcon, PenIcon, PlusIcon, SendIcon, SparkIcon, TrashIcon,
+  CheckIcon, ImageIcon, PenIcon, PlusIcon, TrashIcon,
 } from '@/components/icons'
 import { compressImage, cx, formatDate, nowISO, uid } from '@/lib/utils'
 import { useBufferedText } from '@/lib/useBufferedText'
-import { assistantSystemPrompt, chatStream, isAiReady } from '@/lib/ai'
-import type { ChatMessage, TaskImage, TaskLink } from '@/types'
+import type { ChatMessage, TaskImage } from '@/types'
+import type { BoardScene } from '@/features/whiteboard/ExcalidrawBoard'
+
+// Excalidraw berat (~2 MB) — dimuat terpisah hanya saat papan dibuka.
+const ExcalidrawBoard = lazy(() =>
+  import('@/features/whiteboard/ExcalidrawBoard').then((m) => ({ default: m.ExcalidrawBoard })),
+)
+const sceneToPng = (scene: BoardScene, maxWidth?: number) =>
+  import('@/features/whiteboard/ExcalidrawBoard').then((m) => m.sceneToPng(scene, maxWidth))
 
 /**
  * Detail TASK: gambar + coretan papan tulis, link, dan tanya-jawab AI
@@ -31,11 +37,6 @@ export function TaskDetailPage() {
 
   const fileRef = useRef<HTMLInputElement>(null)
   const [boardImage, setBoardImage] = useState<TaskImage | null>(null)
-  const [linkOpen, setLinkOpen] = useState(false)
-  const [linkForm, setLinkForm] = useState({ label: '', url: '' })
-  const [prompt, setPrompt] = useState('')
-  const [streamText, setStreamText] = useState<string | null>(null)
-  const [chatError, setChatError] = useState<string | null>(null)
   const [pendingDeleteImage, setPendingDeleteImage] = useState<TaskImage | null>(null)
   const [uploading, setUploading] = useState(false)
 
@@ -44,6 +45,12 @@ export function TaskDetailPage() {
   const descriptionField = useBufferedText(task?.description ?? '', (next) => {
     if (currentTaskId) updateTask(ids, currentTaskId, { description: next })
   })
+  const descriptionRef = useRef<HTMLTextAreaElement | null>(null)
+  // Textarea tumbuh mengikuti isi: semua baris deskripsi terlihat tanpa scroll.
+  const descriptionRows = useMemo(() => {
+    const lines = descriptionField.value.split('\n').length
+    return Math.max(4, Math.min(24, lines + 1))
+  }, [descriptionField.value])
 
   if (!found || !task) return <Navigate to="/projects" replace />
   const { project, building } = found
@@ -76,74 +83,29 @@ export function TaskDetailPage() {
     }
   }
 
-  const saveMarkup = (imageId: string, patch: { strokes: TaskImage['strokes']; annotations: TaskImage['annotations'] }) => {
+  /** Simpan scene Excalidraw + segarkan thumbnail PNG-nya. */
+  const saveMarkup = async (imageId: string, scene: BoardScene) => {
+    const png = await sceneToPng(scene)
     updateTask(ids, task.id, {
-      images: task.images.map((img) => (img.id === imageId ? { ...img, ...patch } : img)),
+      images: task.images.map((img) =>
+        img.id === imageId
+          ? {
+              ...img,
+              // Scene Excalidraw disimpan di field strokes (kompatibel model lama).
+              strokes: scene as unknown as TaskImage['strokes'],
+              // Thumbnail diperbarui kalau berhasil diekspor; kalau gagal,
+              // gambar asli tetap dipakai sebagai pratinjau.
+              dataUrl: png ?? img.dataUrl,
+            }
+          : img,
+      ),
     })
   }
 
   /* ---------- link ---------- */
-
-  const submitLink = (e: FormEvent) => {
-    e.preventDefault()
-    const url = linkForm.url.trim()
-    if (!url) return
-    const link: TaskLink = {
-      id: uid('lnk'),
-      label: linkForm.label.trim() || url,
-      url: /^https?:\/\//i.test(url) ? url : `https://${url}`,
-    }
-    updateTask(ids, task.id, { links: [...task.links, link] })
-    setLinkForm({ label: '', url: '' })
-    setLinkOpen(false)
-  }
-
-  /* ---------- tanya AI ---------- */
-
-  const ask = async (e: FormEvent) => {
-    e.preventDefault()
-    const question = prompt.trim()
-    if (!question || streamText !== null) return
-    if (!isAiReady()) {
-      setChatError(t('assistant.noKey'))
-      return
-    }
-
-    const userMsg: ChatMessage = { id: uid('msg'), role: 'user', content: question, createdAt: nowISO() }
-    const history = [...task.chat, userMsg]
-    updateTask(ids, task.id, { chat: history })
-    setPrompt('')
-    setChatError(null)
-    setStreamText('')
-
-    try {
-      const context = [
-        `Project: ${project.name}`,
-        `Building: ${building.name}`,
-        `Task: ${task.title}`,
-        task.description && `Deskripsi task: ${task.description}`,
-        building.summaryClient && `Summary client building ini: ${building.summaryClient}`,
-      ]
-        .filter(Boolean)
-        .join('\n')
-
-      const reply = await chatStream(
-        [
-          { role: 'system', content: assistantSystemPrompt({ standards: data.standards, lang, extraContext: context }) },
-          ...history.map((m) => ({ role: m.role, content: m.content })),
-        ],
-        { onDelta: (full) => setStreamText(full) },
-      )
-
-      updateTask(ids, task.id, {
-        chat: [...history, { id: uid('msg'), role: 'assistant', content: reply, createdAt: nowISO() }],
-      })
-    } catch (err) {
-      setChatError(t('assistant.error', { msg: err instanceof Error ? err.message : 'unknown' }))
-    } finally {
-      setStreamText(null)
-    }
-  }
+  /* Section link & tanya AI dihapus dari halaman task — percakapan AI
+     cukup lewat halaman Asisten AI. Data lama (links/chat) tetap disimpan
+     di model dan tidak hilang. */
 
   return (
     <>
@@ -176,8 +138,10 @@ export function TaskDetailPage() {
           </div>
           <GlassTextarea
             {...descriptionField}
+            ref={descriptionRef}
             placeholder={t('task.descriptionPlaceholder')}
-            rows={4}
+            rows={descriptionRows}
+            className="resize-y leading-relaxed"
           />
           <div className="mt-3">
             <Field label={t('task.dueDate')}>
@@ -227,17 +191,8 @@ export function TaskDetailPage() {
                     className="relative block w-full"
                     aria-label={`${t('board.title')} — ${img.name}`}
                   >
+                    {/* Thumbnail: hasil ekspor PNG papan Excalidraw, atau gambar asli. */}
                     <img src={img.dataUrl} alt={img.name} className="block w-full" />
-                    <StrokeLayer strokes={img.strokes} />
-                    {img.annotations.map((a) => (
-                      <span
-                        key={a.id}
-                        style={{ left: `${a.x * 100}%`, top: `${a.y * 100}%`, color: a.color }}
-                        className="pointer-events-none absolute -translate-y-1/2 whitespace-pre rounded bg-black/45 px-1 text-[10px] font-bold"
-                      >
-                        {a.text}
-                      </span>
-                    ))}
                   </button>
                   <div className="flex items-center gap-1 px-2.5 py-2">
                     <p className="min-w-0 flex-1 truncate text-[11.5px] text-ink-faint">{img.name}</p>
@@ -266,120 +221,6 @@ export function TaskDetailPage() {
           )}
         </GlassCard>
 
-        {/* ---------- link ---------- */}
-        <GlassCard>
-          <div className="mb-3 flex items-center gap-2">
-            <LinkIcon className="h-[18px] w-[18px] text-ink-soft" />
-            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('task.links')}</h2>
-            <GlassButton variant="glass" size="sm" onClick={() => setLinkOpen(true)} icon={<PlusIcon className="h-4 w-4" />}>
-              {t('task.addLink')}
-            </GlassButton>
-          </div>
-
-          {task.links.length === 0 ? (
-            <p className="py-4 text-center text-[13px] text-ink-faint">{t('task.noLinks')}</p>
-          ) : (
-            <ul className="-mx-2 space-y-0.5">
-              {task.links.map((link) => (
-                <li key={link.id} className="flex items-center gap-2 rounded-2xl px-2 py-2 hover:bg-glass-bg/20">
-                  <LinkIcon className="h-4 w-4 shrink-0 text-ink-faint" />
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-accent hover:underline"
-                  >
-                    {link.label}
-                  </a>
-                  <GlassButton
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    aria-label={t('common.delete')}
-                    onClick={() =>
-                      updateTask(ids, task.id, { links: task.links.filter((l) => l.id !== link.id) })
-                    }
-                  >
-                    <TrashIcon className="h-4 w-4 hover:text-danger" />
-                  </GlassButton>
-                </li>
-              ))}
-            </ul>
-          )}
-        </GlassCard>
-
-        {/* ---------- tanya AI ---------- */}
-        <GlassCard>
-          <div className="mb-3 flex items-center gap-2">
-            <SparkIcon className="h-[18px] w-[18px] text-ink-soft" />
-            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('task.askAi')}</h2>
-            {task.chat.length > 0 && (
-              <GlassButton
-                variant="ghost"
-                size="sm"
-                onClick={() => updateTask(ids, task.id, { chat: [] })}
-              >
-                {t('assistant.clear')}
-              </GlassButton>
-            )}
-          </div>
-
-          {(() => {
-            const visible =
-              streamText !== null
-                ? [...task.chat, { id: '__streaming', role: 'assistant' as const, content: streamText, createdAt: '' }]
-                : task.chat
-            if (visible.length === 0) {
-              return (
-                <p className="rounded-2xl bg-glass-bg/15 px-4 py-3 text-[13px] leading-relaxed text-ink-faint">
-                  {t('task.aiEmpty')}
-                </p>
-              )
-            }
-            return (
-              <ul className="mb-3 space-y-2.5">
-                {visible.map((m) => (
-                  <ChatBubble key={m.id} message={m} />
-                ))}
-              </ul>
-            )
-          })()}
-
-          {/* Slot tinggi tetap: posisi form input tidak melompat. */}
-          <div className="flex min-h-9 items-center gap-2 text-[13px] text-ink-faint">
-            {streamText !== null && (!streamText || streamText.trim().length === 0) && (
-              <>
-                <Spinner />
-                {t('assistant.thinking')}
-              </>
-            )}
-          </div>
-          {chatError && (
-            <p className="mb-3 rounded-2xl border border-danger/25 bg-danger/10 px-3.5 py-2.5 text-[12.5px] text-danger">
-              {chatError}
-            </p>
-          )}
-
-          <form onSubmit={ask} className="flex gap-2">
-            <GlassInput
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder={t('task.aiPlaceholder')}
-              disabled={streamText !== null}
-            />
-            <GlassButton
-              type="submit"
-              variant="primary"
-              size="icon"
-              className="h-[46px] w-[46px] shrink-0"
-              disabled={!prompt.trim() || streamText !== null}
-              aria-label={t('task.send')}
-            >
-              <SendIcon className="h-[18px] w-[18px]" />
-            </GlassButton>
-          </form>
-        </GlassCard>
-
         <GlassButton
           variant="ghost"
           className="text-danger"
@@ -395,46 +236,25 @@ export function TaskDetailPage() {
         </GlassButton>
       </div>
 
-      <MarkupBoard
-        open={boardImage !== null}
-        image={boardImage}
-        onClose={() => setBoardImage(null)}
-        onSave={(patch) => boardImage && saveMarkup(boardImage.id, patch)}
-      />
-
-      <Modal
-        open={linkOpen}
-        onClose={() => setLinkOpen(false)}
-        title={t('task.addLink')}
-        footer={
-          <>
-            <GlassButton variant="ghost" onClick={() => setLinkOpen(false)}>
-              {t('common.cancel')}
-            </GlassButton>
-            <GlassButton variant="primary" onClick={submitLink} disabled={!linkForm.url.trim()}>
-              {t('common.save')}
-            </GlassButton>
-          </>
+      <Suspense
+        fallback={
+          <Modal open={boardImage !== null} onClose={() => setBoardImage(null)} title={t('board.title')}>
+            <div className="flex items-center justify-center gap-2 py-14 text-[13px] text-ink-faint">
+              <Spinner />
+              {t('common.loading')}
+            </div>
+          </Modal>
         }
       >
-        <form onSubmit={submitLink} className="space-y-4">
-          <Field label={t('task.linkUrl')}>
-            <GlassInput
-              autoFocus
-              value={linkForm.url}
-              onChange={(e) => setLinkForm({ ...linkForm, url: e.target.value })}
-              placeholder="https://…"
-              required
-            />
-          </Field>
-          <Field label={`${t('task.linkLabel')} (${t('common.optional')})`}>
-            <GlassInput
-              value={linkForm.label}
-              onChange={(e) => setLinkForm({ ...linkForm, label: e.target.value })}
-            />
-          </Field>
-        </form>
-      </Modal>
+        {boardImage && (
+          <ExcalidrawBoard
+            open={boardImage !== null}
+            image={boardImage}
+            onClose={() => setBoardImage(null)}
+            onSave={(scene) => boardImage && void saveMarkup(boardImage.id, scene)}
+          />
+        )}
+      </Suspense>
 
       <ConfirmDialog
         open={pendingDeleteImage !== null}

@@ -188,7 +188,7 @@ export const en: Dict = {
     markUndone: 'Mark Not Done',
     images: 'Images & Markup',
     addImage: 'Add Image',
-    imageHint: 'Tap an image to scribble on it like a whiteboard.',
+    imageHint: 'Tap an image to open the Excalidraw board. You can also paste (Ctrl+V) images straight onto the board.',
     noImages: 'No images yet.',
     links: 'Links',
     addLink: 'Add Link',
@@ -214,6 +214,8 @@ export const en: Dict = {
     saveBoard: 'Save Markup',
     textPrompt: 'Text content:',
     hint: 'Draw with mouse or finger. Markup stays pinned to the image.',
+    excalidrawHint: 'Excalidraw board — pen, shapes, arrows, text, sticky notes, undo/redo.',
+    pasteHint: 'Tip: copy an image anywhere (Ctrl+C), then paste it straight onto the board with Ctrl+V.',
   },
   standards: {
     title: 'Standard Notes',

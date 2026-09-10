@@ -137,12 +137,12 @@ function TaskSection({
                   <CheckIcon className="h-3 w-3" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={cx('block truncate text-[14px] font-semibold text-ink', tone === 'ok' && 'line-through opacity-60')}>
+                  <span className={cx('block break-words text-[14px] font-semibold leading-snug text-ink', tone === 'ok' && 'line-through opacity-60')}>
                     {task.title}
                   </span>
-                  {/* Deskripsi hanya untuk task yang belum selesai. */}
+                  {/* Deskripsi tampil utuh persis seperti aslinya (baris & spasi dipertahankan). */}
                   {renderDescription && task.description && (
-                    <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-relaxed text-ink-faint">
+                    <span className="mt-1 block whitespace-pre-wrap break-words rounded-xl bg-glass-bg/20 px-3 py-2 text-[12.5px] leading-relaxed text-ink-soft">
                       {task.description}
                     </span>
                   )}

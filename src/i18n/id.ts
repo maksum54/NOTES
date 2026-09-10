@@ -186,7 +186,7 @@ export const id = {
     markUndone: 'Tandai Belum',
     images: 'Gambar & Coretan',
     addImage: 'Tambah Gambar',
-    imageHint: 'Klik gambar untuk mencoret-coret seperti papan tulis.',
+    imageHint: 'Klik gambar untuk membuka papan gambar Excalidraw. Bisa juga paste (Ctrl+V) gambar langsung ke papan.',
     noImages: 'Belum ada gambar.',
     links: 'Link',
     addLink: 'Tambah Link',
@@ -212,6 +212,8 @@ export const id = {
     saveBoard: 'Simpan Coretan',
     textPrompt: 'Isi teks:',
     hint: 'Gambar dengan mouse atau jari. Coretan tersimpan menempel pada gambar.',
+    excalidrawHint: 'Papan gambar Excalidraw — pena, bentuk, panah, teks, sticky note, undo/redo.',
+    pasteHint: 'Tip: salin gambar di mana saja (Ctrl+C) lalu paste langsung ke papan dengan Ctrl+V.',
   },
   standards: {
     title: 'Catatan Standard',

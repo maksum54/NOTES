@@ -87,10 +87,10 @@ export function AssistantPage() {
         }
       />
 
-      {/* scrollbar-gutter: slot scrollbar dicadangkan dari awal, jadi lebar
-          konten tidak melompat saat "Sedang berpikir…" muncul/hilang. */}
-      <GlassCard className="flex min-h-[60dvh] flex-col animate-fade-up [scrollbar-gutter:stable]">
-        <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* Tinggi terkunci ke viewport: pesan panjang men-scroll di dalam kartu,
+          bukan memanjangkan halaman. scrollbar-gutter menjaga lebar stabil. */}
+      <GlassCard className="flex h-[calc(100dvh-11.5rem)] min-h-[460px] flex-col animate-fade-up [scrollbar-gutter:stable]">
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           {visible.length === 0 ? (
             <EmptyState
               icon={<SparkIcon className="h-8 w-8" />}
