@@ -69,6 +69,8 @@ export function TasksPage() {
         title: draft.title,
         description: draft.html,
         pinned: draft.pinned,
+        color: draft.color,
+        collaborators: draft.collaborators ?? [],
         dueDate: draft.dueDate,
         archived: draft.archived,
       },
@@ -140,11 +142,13 @@ export function TasksPage() {
             title: modalRow.task.title,
             html: modalRow.task.description,
             pinned: modalRow.task.pinned ?? false,
-            color: null,
+            color: modalRow.task.color ?? null,
             dueDate: modalRow.task.dueDate,
             archived: modalRow.task.archived ?? false,
+            collaborators: modalRow.task.collaborators ?? [],
           }}
           editedAt={modalRow.task.updatedAt}
+          locationLabel={`${modalRow.project.name} · ${modalRow.building.name}`}
           onChange={(draft) => saveEdit(modalRow, draft)}
           onClose={() => setEditing(null)}
           onArchive={() => {}}
@@ -212,6 +216,7 @@ function TaskSection({
                 html={row.task.description}
                 done={row.task.status === 'sudah'}
                 pinned={row.task.pinned}
+                color={row.task.color ?? undefined}
                 meta={
                   <>
                     <Link

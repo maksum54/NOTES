@@ -235,6 +235,7 @@ export const id = {
     archiveFromEditor: 'Arsipkan task',
     deleteFromEditor: 'Hapus task',
     openTask: 'Buka task lengkap',
+    noCollaborators: 'Belum ada anggota lain yang memakai aplikasi ini.',
   },
   board: {
     title: 'Papan Coretan',

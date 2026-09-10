@@ -50,6 +50,7 @@ export function NotesPage() {
       body: draft.html,
       pinned: draft.pinned,
       color: draft.color,
+      collaborators: draft.collaborators ?? [],
       archived: draft.archived,
     })
   }
@@ -114,6 +115,7 @@ export function NotesPage() {
             color: editing.color,
             dueDate: null,
             archived: editing.archived,
+            collaborators: editing.collaborators ?? [],
           }}
           editedAt={editing.updatedAt}
           onChange={saveEdit}

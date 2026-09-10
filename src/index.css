@@ -346,6 +346,20 @@
   .lined-html p.lined-line:last-child {
     border-bottom: 0;
   }
+  /* Judul H1/H2 di dalam teks bergaris tetap terbaca sebagai heading. */
+  .lined-html .lined-h {
+    font-weight: 800;
+    margin: 0.35em 0 0.1em;
+  }
+  .lined-html h1.lined-h { font-size: 1.35em; }
+  .lined-html h2.lined-h { font-size: 1.18em; }
+  /* Marker stabilo di kartu (render) — sama seperti di editor. */
+  .lined-html mark,
+  .rich-editor mark {
+    border-radius: 3px;
+    padding: 0.08em 0.15em;
+    color: inherit;
+  }
 }
 
 @layer utilities {

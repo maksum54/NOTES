@@ -105,6 +105,10 @@ export interface Task {
   pinned?: boolean
   /** Diarsipkan — hilang dari daftar aktif, masih bisa dibuka dari section Arsip. */
   archived?: boolean
+  /** Warna latar kartu (hex) — null = putih. */
+  color?: string | null
+  /** Nama-nama kolaborator (sesama pengguna aplikasi). */
+  collaborators?: string[]
   images: TaskImage[]
   links: TaskLink[]
   /** Riwayat "tanya sama AI" khusus task ini. */
@@ -217,8 +221,21 @@ export interface Note {
   color: string | null
   pinned: boolean
   archived: boolean
+  /** Nama-nama kolaborator (sesama pengguna aplikasi). */
+  collaborators?: string[]
   createdAt: ISODate
   updatedAt: ISODate
+}
+
+/**
+ * ANGGOTA — sesama pengguna aplikasi yang bisa diajak kolaborasi.
+ * Hanya identitas ringan (nama + email); otorisasi tetap di perangkat masing-masing.
+ */
+export interface Member {
+  name: string
+  email: string
+  /** Stempel waktu saat anggota pertama kali terlihat. */
+  addedAt: ISODate
 }
 
 /** Seluruh isi database aplikasi — inilah yang di-backup ke Google Drive. */
@@ -229,6 +246,8 @@ export interface AppData {
   notes: Note[]
   warnings: Warning[]
   boards: CanvasBoard[]
+  /** Daftar anggota yang pernah dipakai (dipakai panel kolaborator). */
+  members: Member[]
   updatedAt: ISODate
 }
 
@@ -242,6 +261,7 @@ export function emptyData(): AppData {
     notes: [],
     warnings: [],
     boards: [],
+    members: [],
     updatedAt: new Date().toISOString(),
   }
 }

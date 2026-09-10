@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cx } from '@/lib/utils'
-import { FONT_SIZES, TEXT_COLORS, sanitizeStrict } from '@/lib/richtext'
+import { FONT_SIZES, HIGHLIGHT_COLORS, TEXT_COLORS, sanitizeStrict } from '@/lib/richtext'
 import {
-  BellIcon, CheckboxIcon, FormatIcon, ImageIcon, MoreIcon,
+  BellIcon, CheckboxIcon, ImageIcon, MoreIcon,
   PaletteIcon, PinIcon, RedoIcon, UndoIcon,
 } from '@/components/icons'
 import { GlassButton } from '@/components/glass/Glass'
+import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import { formatDateTime } from '@/lib/utils'
 
@@ -14,8 +15,9 @@ import { formatDateTime } from '@/lib/utils'
  * Pop-up editor catatan/task ala Google Keep:
  * - Judul di atas + pin kanan
  * - Body rich text (utang format dari RichTextEditor) tanpa border
- * - Baris "Diedit …" lalu toolbar bawah: format, palet warna, pengingat,
- *   gambar, kotak centang, menu lainnya, undo/redo, dan Tutup
+ * - Baris "Diedit …" lalu toolbar bawah: format (H1/H2/size/B/I/U/S),
+ *   stabilo, palet warna, pengingat, kolaborator, gambar, kotak centang,
+ *   menu lainnya, undo/redo, dan Tutup
  * - Auto-save tiap perubahan; Tutup hanya menutup.
  */
 
@@ -26,6 +28,8 @@ export interface TaskNoteDraft {
   color: string | null
   dueDate: string | null
   archived: boolean
+  /** Nama-nama kolaborator (sesama pengguna aplikasi). */
+  collaborators?: string[]
 }
 
 interface TaskNoteModalProps {
@@ -37,16 +41,19 @@ interface TaskNoteModalProps {
   onClose: () => void
   onArchive?: () => void
   onDelete?: () => void
+  /** Lokasi task (project · building) — untuk panel kolaborator. */
+  locationLabel?: string
 }
 
 export function TaskNoteModal({
-  open, initial, editedAt, onChange, onClose, onArchive, onDelete,
+  open, initial, editedAt, onChange, onClose, onArchive, onDelete, locationLabel,
 }: TaskNoteModalProps) {
   const { t, lang } = useLang()
+  const { data } = useData()
   const titleRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
   const [draft, setDraft] = useState(initial)
-  const [panel, setPanel] = useState<null | 'palette' | 'reminder' | 'format' | 'more'>(null)
+  const [panel, setPanel] = useState<null | 'palette' | 'reminder' | 'more' | 'collab'>(null)
   const [format, setFormat] = useState({ bold: false, italic: false, underline: false, strike: false })
   const [size, setSize] = useState(14)
   const [empty, setEmpty] = useState(isEmptyHtml(initial.html))
@@ -142,11 +149,57 @@ export function TaskNoteModal({
     emitBody()
   }
 
+  /** Stabilo (marker) area teks terseleksi — beda dari warna latar kartu. */
+  const applyHighlight = (hex: string) => {
+    restoreSelection()
+    // Firefox tidak punya hiliteColor; styleWithCSS + bgColor jadi fallback.
+    document.execCommand('styleWithCSS', false, 'true')
+    const ok = document.execCommand('hiliteColor', false, hex)
+    if (!ok) document.execCommand('backColor', false, hex)
+    document.execCommand('styleWithCSS', false, 'false')
+    refreshFormat()
+    emitBody()
+  }
+
+  /** Ganti blok baris saat ini menjadi H1/H2/paragraf. */
+  const applyBlock = (tag: 'h1' | 'h2' | 'p') => {
+    restoreSelection()
+    document.execCommand('formatBlock', false, tag)
+    emitBody()
+  }
+
+  /** Sisipkan gambar (base64) di posisi kursor; juga dipakai untuk paste. */
+  const insertImage = (file: File) => {
+    if (!file.type.startsWith('image/')) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      restoreSelection()
+      document.execCommand('insertHTML', false, `<img src="${reader.result}" alt="">`)
+      emitBody()
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const fileRef = useRef<HTMLInputElement>(null)
+
   const toolBtn = (active: boolean) =>
     cx(
       'grid h-9 w-9 place-items-center rounded-full transition-colors',
       active ? 'bg-accent/15 text-accent' : 'text-ink-soft hover:bg-black/5 dark:hover:bg-white/10',
     )
+
+  /* Nama sesama pengguna aplikasi (untuk panel kolaborator). */
+  const accounts = useMemo(
+    () => data.members.map((m) => m.name).sort((a, b) => a.localeCompare(b)),
+    [data.members],
+  )
+
+
+
+  const toggleCollab = (name: string) => {
+    const list = draft.collaborators ?? []
+    patch({ collaborators: list.includes(name) ? list.filter((x) => x !== name) : [...list, name] })
+  }
 
   /* Tarik tepi kiri/kanan dialog untuk melebarkan/mempersempit area input. */
   const startResize = (e: React.PointerEvent<HTMLDivElement>, side: 'left' | 'right') => {
@@ -234,6 +287,13 @@ export function TaskNoteModal({
           onBlur={emitBody}
           onMouseUp={refreshFormat}
           onKeyUp={refreshFormat}
+          onPaste={(e) => {
+            const img = Array.from(e.clipboardData.files).find((f) => f.type.startsWith('image/'))
+            if (img) {
+              e.preventDefault()
+              insertImage(img)
+            }
+          }}
         />
         {empty && (
           <p className="pointer-events-none -mt-[calc(7rem-0.75rem)] px-5 py-3 text-[14px] text-ink-faint">
@@ -255,57 +315,43 @@ export function TaskNoteModal({
         </div>
 
         {/* ---------- toolbar bawah ---------- */}
-        <div className="relative flex items-center gap-0.5 px-3 pb-2 pt-1 safe-bottom">
-          {/* Format: H1 / H2 / Aa / ukuran / B / I / U / S */}
-          {panel === 'format' && (
-            <PopPanel onClose={() => setPanel(null)}>
-              <div className="flex items-center gap-0.5">
-                {[
-                  { label: 'H1', cmd: () => document.execCommand('formatBlock', false, 'h1') },
-                  { label: 'H2', cmd: () => document.execCommand('formatBlock', false, 'h2') },
-                  { label: 'Aa', cmd: () => document.execCommand('formatBlock', false, 'p') },
-                ].map((b) => (
-                  <button key={b.label} type="button" className={toolBtn(false) + ' text-[13px] font-bold'} onClick={() => { restoreSelection(); b.cmd(); emitBody() }}>
-                    {b.label}
-                  </button>
-                ))}
-                <span className="mx-1 h-5 w-px bg-ink/10" />
-                <select
-                  aria-label="font size"
-                  value={size}
-                  onChange={(e) => applySize(Number(e.target.value))}
-                  className="h-8 rounded-lg bg-transparent pr-1 text-[12px] font-semibold text-ink-soft focus:outline-none"
-                >
-                  {FONT_SIZES.map((px) => (
-                    <option key={px} value={px}>{px}</option>
-                  ))}
-                </select>
-                <span className="mx-1 h-5 w-px bg-ink/10" />
-                <button type="button" aria-pressed={format.bold} className={toolBtn(format.bold) + ' text-[14px] font-bold'} onClick={() => applyCmd('bold')}>B</button>
-                <button type="button" aria-pressed={format.italic} className={toolBtn(format.italic) + ' text-[14px] italic'} onClick={() => applyCmd('italic')}>I</button>
-                <button type="button" aria-pressed={format.underline} className={toolBtn(format.underline) + ' text-[14px] underline'} onClick={() => applyCmd('underline')}>U</button>
-                <button type="button" aria-pressed={format.strike} className={toolBtn(format.strike) + ' text-[14px] line-through'} onClick={() => applyCmd('strikeThrough')}>S</button>
-              </div>
-            </PopPanel>
-          )}
-
-          {/* Palet warna */}
+        <div className="relative flex flex-wrap items-center gap-0.5 px-3 pb-2 pt-1 safe-bottom">
+          {/* Palet warna: warna teks + stabilo + latar kartu */}
           {panel === 'palette' && (
-            <PopPanel onClose={() => setPanel(null)}>
-              <div className="grid grid-cols-6 gap-2 p-1">
-                {TEXT_COLORS.map((hex) => (
-                  <button
-                    key={hex}
-                    type="button"
-                    aria-label={hex}
-                    onClick={() => applyColor(hex)}
-                    className="h-6 w-6 rounded-full border border-black/10 transition-transform hover:scale-110"
-                    style={{ background: hex }}
-                  />
-                ))}
+            <PopPanel wide onClose={() => setPanel(null)}>
+              <div className="flex items-center gap-2 px-2 pt-1.5">
+                <span className="text-[11px] font-semibold text-ink-faint">Teks</span>
+                <div className="grid flex-1 grid-cols-6 gap-2">
+                  {TEXT_COLORS.map((hex) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      aria-label={`text ${hex}`}
+                      onClick={() => applyColor(hex)}
+                      className="h-6 w-6 rounded-full border border-black/10 transition-transform hover:scale-110"
+                      style={{ background: hex }}
+                    />
+                  ))}
+                </div>
               </div>
-              <p className="px-2 pb-1 pt-1.5 text-[11px] text-ink-faint">Latar kartu</p>
-              <div className="flex items-center gap-2 p-1 pt-0">
+              <div className="flex items-center gap-2 px-2 pt-2">
+                <span className="text-[11px] font-semibold text-ink-faint">Stabilo</span>
+                <div className="flex flex-1 items-center gap-2">
+                  <button type="button" aria-label="marker none" onClick={() => applyHighlight('transparent')} className="h-6 w-6 rounded-full border border-black/15 bg-white dark:bg-[#1e2028]" />
+                  {HIGHLIGHT_COLORS.map((hex) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      aria-label={`marker ${hex}`}
+                      onClick={() => applyHighlight(hex)}
+                      className="h-6 w-6 rounded-full border border-black/10 transition-transform hover:scale-110"
+                      style={{ background: hex }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <p className="px-2 pb-1 pt-2 text-[11px] text-ink-faint">Latar kartu</p>
+              <div className="flex items-center gap-2 px-2 pb-1.5 pt-0">
                 <button type="button" aria-label="none" onClick={() => patch({ color: null })} className="h-6 w-6 rounded-full border border-black/15 bg-white dark:bg-[#1e2028]" />
                 {['#f28b82', '#fbbc04', '#fff475', '#ccff90', '#a7ffeb', '#cbf0f8', '#aecbfa', '#d7aefb', '#fdcfe8'].map((hex) => (
                   <button key={hex} type="button" aria-label={hex} onClick={() => patch({ color: hex })} className="h-6 w-6 rounded-full border border-black/10 transition-transform hover:scale-110" style={{ background: hex }} />
@@ -337,6 +383,39 @@ export function TaskNoteModal({
             </PopPanel>
           )}
 
+          {/* Kolaborator: pilih sesama pengguna aplikasi */}
+          {panel === 'collab' && (
+            <PopPanel wide onClose={() => setPanel(null)}>
+              {locationLabel && (
+                <p className="border-b border-black/5 px-3 py-2 text-[11px] text-ink-faint dark:border-white/10">
+                  {locationLabel}
+                </p>
+              )}
+              <div className="max-h-56 overflow-y-auto">
+                {accounts.map((name) => {
+                  const on = (draft.collaborators ?? []).includes(name)
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] hover:bg-black/5 dark:hover:bg-white/10"
+                      onClick={() => toggleCollab(name)}
+                    >
+                      <span className="grid h-7 w-7 place-items-center rounded-pill bg-accent/20 text-[11px] font-extrabold text-accent">
+                        {name.slice(0, 2).toUpperCase()}
+                      </span>
+                      <span className="flex-1 truncate">{name}</span>
+                      {on && <CheckIconSmall />}
+                    </button>
+                  )
+                })}
+                {accounts.length === 0 && (
+                  <p className="px-3 py-3 text-[12.5px] text-ink-faint">{t('task.noCollaborators')}</p>
+                )}
+              </div>
+            </PopPanel>
+          )}
+
           {/* Menu lainnya */}
           {panel === 'more' && (
             <PopPanel onClose={() => setPanel(null)}>
@@ -353,8 +432,31 @@ export function TaskNoteModal({
             </PopPanel>
           )}
 
-          <button type="button" title="Format" className={toolBtn(panel === 'format')} onClick={() => setPanel(panel === 'format' ? null : 'format')}>
-            <FormatIcon className="h-[18px] w-[18px]" />
+          {/* Format inline langsung di toolbar: H1 H2 Aa | size | B I U S | stabilo */}
+          <button type="button" title="Heading 1" className={toolBtn(false) + ' text-[12px] font-extrabold'} onClick={() => applyBlock('h1')}>H1</button>
+          <button type="button" title="Heading 2" className={toolBtn(false) + ' text-[12px] font-extrabold'} onClick={() => applyBlock('h2')}>H2</button>
+          <button type="button" title="Teks biasa" className={toolBtn(false) + ' text-[12px] font-bold'} onClick={() => applyBlock('p')}>Aa</button>
+          <select
+            aria-label="font size"
+            value={size}
+            onChange={(e) => applySize(Number(e.target.value))}
+            className="h-9 rounded-full bg-transparent px-1.5 text-[12px] font-semibold text-ink-soft hover:bg-black/5 focus:outline-none dark:hover:bg-white/10"
+          >
+            {FONT_SIZES.map((px) => (
+              <option key={px} value={px}>{px}</option>
+            ))}
+          </select>
+          <button type="button" aria-pressed={format.bold} title="Bold" className={toolBtn(format.bold) + ' text-[14px] font-bold'} onClick={() => applyCmd('bold')}>B</button>
+          <button type="button" aria-pressed={format.italic} title="Italic" className={toolBtn(format.italic) + ' text-[14px] italic'} onClick={() => applyCmd('italic')}>I</button>
+          <button type="button" aria-pressed={format.underline} title="Underline" className={toolBtn(format.underline) + ' text-[14px] underline'} onClick={() => applyCmd('underline')}>U</button>
+          <button type="button" aria-pressed={format.strike} title="Strikethrough" className={toolBtn(format.strike) + ' text-[14px] line-through'} onClick={() => applyCmd('strikeThrough')}>S</button>
+          <button
+            type="button"
+            title="Stabilo"
+            onClick={() => applyHighlight(HIGHLIGHT_COLORS[3])}
+            className="grid h-9 w-9 place-items-center rounded-full text-ink-soft transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+          >
+            <span className="grid h-[18px] w-[18px] place-items-center rounded-[4px] bg-[#fff173] text-[10px] font-extrabold text-[#7a6400]">S</span>
           </button>
           <button type="button" title="Palette" className={toolBtn(panel === 'palette')} onClick={() => setPanel(panel === 'palette' ? null : 'palette')}>
             <PaletteIcon className="h-[18px] w-[18px]" />
@@ -362,12 +464,23 @@ export function TaskNoteModal({
           <button type="button" title="Reminder" className={toolBtn(panel === 'reminder')} onClick={() => setPanel(panel === 'reminder' ? null : 'reminder')}>
             <BellIcon className="h-[18px] w-[18px]" />
           </button>
-          <button type="button" title="Collaborator" className={toolBtn(false)} onClick={() => {}}>
+          <button type="button" title="Collaborator" className={toolBtn(panel === 'collab')} onClick={() => setPanel(panel === 'collab' ? null : 'collab')}>
             <PersonAddIconSmall />
           </button>
-          <button type="button" title="Image" className={toolBtn(false)} onClick={() => {}}>
+          <button type="button" title="Image" className={toolBtn(false)} onClick={() => fileRef.current?.click()}>
             <ImageIcon className="h-[18px] w-[18px]" />
           </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) insertImage(f)
+              e.target.value = ''
+            }}
+          />
           <button type="button" title="Checkbox" className={toolBtn(false)} onClick={() => { restoreSelection(); document.execCommand('insertUnorderedList'); emitBody() }}>
             <CheckboxIcon className="h-[18px] w-[18px]" />
           </button>
@@ -392,11 +505,11 @@ export function TaskNoteModal({
 }
 
 /** Panel kecil melayang di atas toolbar (palet / pengingat / menu). */
-function PopPanel({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function PopPanel({ children, onClose, wide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
   return (
     <>
       <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden="true" />
-      <div className="absolute bottom-14 left-2 z-30 min-w-56 rounded-2xl border border-black/10 bg-white py-1 shadow-2xl dark:border-white/15 dark:bg-[#2a2d36]">
+      <div className={cx('absolute bottom-14 left-2 z-30 rounded-2xl border border-black/10 bg-white py-1 shadow-2xl dark:border-white/15 dark:bg-[#2a2d36]', wide ? 'w-[300px]' : 'min-w-56')}>
         {children}
       </div>
     </>
@@ -410,6 +523,14 @@ function PersonAddIconSmall() {
       <circle cx="9" cy="8" r="3.5" />
       <path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" />
       <path d="M19 8v6M16 11h6" />
+    </svg>
+  )
+}
+
+function CheckIconSmall() {
+  return (
+    <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="text-accent" aria-hidden="true">
+      <path d="m4.5 12.5 5 5 10-11" />
     </svg>
   )
 }

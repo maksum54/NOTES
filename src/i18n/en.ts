@@ -237,6 +237,7 @@ export const en: Dict = {
     archiveFromEditor: 'Archive task',
     deleteFromEditor: 'Delete task',
     openTask: 'Open full task',
+    noCollaborators: 'No other app members yet.',
   },
   board: {
     title: 'Markup Board',

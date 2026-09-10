@@ -290,16 +290,20 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
             title: modalRow.task.title,
             html: modalRow.task.description,
             pinned: modalRow.task.pinned ?? false,
-            color: null,
+            color: modalRow.task.color ?? null,
             dueDate: modalRow.task.dueDate,
             archived: modalRow.task.archived ?? false,
+            collaborators: modalRow.task.collaborators ?? [],
           }}
           editedAt={modalRow.task.updatedAt}
+          locationLabel={`${modalRow.project.name} · ${modalRow.building.name}`}
           onChange={(draft) =>
             updateTask({ projectId: modalRow.project.id, buildingId: modalRow.building.id }, modalRow.task.id, {
               title: draft.title,
               description: draft.html,
               pinned: draft.pinned,
+              color: draft.color,
+              collaborators: draft.collaborators ?? [],
               dueDate: draft.dueDate,
               archived: draft.archived,
             })

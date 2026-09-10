@@ -16,6 +16,7 @@ import {
   type CanvasBoard,
   type ChatMessage,
   type DoneStatus,
+  type Member,
   type Note,
   type Project,
   type StandardNote,
@@ -28,6 +29,7 @@ import { reviewSummary, isAiReady } from '@/lib/ai'
 import { backupToDrive, isAutoSyncOn, isDriveConnected } from '@/lib/drive'
 import { showNotification } from '@/lib/notify'
 import { useLang } from './LangContext'
+import { useAuth } from './AuthContext'
 
 /* ============================================================
    Satu sumber kebenaran untuk seluruh data aplikasi.
@@ -59,7 +61,7 @@ interface DataValue {
   toggleTask: (ids: BuildingIds, taskId: string) => void
   /* -- catatan (sticky note bebas) -- */
   addNote: (input: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>) => Note
-  updateNote: (id: string, patch: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned' | 'archived'>>) => void
+  updateNote: (id: string, patch: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned' | 'archived' | 'collaborators'>>) => void
   deleteNote: (id: string) => void
   /* -- standard -- */
   addStandard: (note: Omit<StandardNote, 'id' | 'createdAt' | 'updatedAt'>) => StandardNote
@@ -76,6 +78,8 @@ interface DataValue {
   markAllWarningsRead: () => void
   clearWarnings: () => void
   unreadWarnings: number
+  /* -- anggota (kolaborator) -- */
+  upsertMember: (input: { name: string; email: string }) => void
   /* -- bulk -- */
   replaceAll: (data: AppData) => void
   resetAll: () => void
@@ -141,6 +145,7 @@ export function findBuilding(
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { t, lang } = useLang()
+  const { account } = useAuth()
   const [data, setData] = useState<AppData>(() => loadData())
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
@@ -194,6 +199,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const mutate = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => ({ ...fn(prev), updatedAt: nowISO() }))
   }, [])
+
+  /* Pemilik data juga masuk daftar anggota supaya bisa dipilih sebagai kolaborator. */
+  const ownerRef = useRef(false)
+  useEffect(() => {
+    if (!account || ownerRef.current) return
+    ownerRef.current = true
+    upsertMember({ name: account.name, email: account.email })
+    // Sengaja sekali per sesi: akun tidak berubah di tengah jalan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account])
 
   /* ---------- canvas board ---------- */
 
@@ -260,6 +275,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const clearWarnings = useCallback(() => {
     setData((prev) => ({ ...prev, warnings: [] }))
   }, [])
+
+  /* ---------- anggota (kolaborator) ---------- */
+
+  /** Catat anggota baru / perbarui email kalau namanya sama. */
+  const upsertMember = useCallback<DataValue['upsertMember']>(
+    ({ name, email }) => {
+      const clean = name.trim()
+      if (!clean) return
+      setData((prev) => {
+        const existing = prev.members.find((m) => m.name.toLowerCase() === clean.toLowerCase())
+        const member: Member = existing
+          ? { ...existing, email: email || existing.email }
+          : { name: clean, email, addedAt: nowISO() }
+        const members = existing
+          ? prev.members.map((m) => (m === existing ? member : m))
+          : [...prev.members, member]
+        return { ...prev, members }
+      })
+    },
+    [],
+  )
 
   /* Pindai target submit yang mendekat / lewat tenggat, sekali saat app dibuka. */
   const scannedRef = useRef(false)
@@ -581,6 +617,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       markAllWarningsRead,
       clearWarnings,
       unreadWarnings,
+      upsertMember,
       replaceAll,
       resetAll,
       syncing,
@@ -592,7 +629,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addBoard, updateBoard, deleteBoard,
       addStandard, addStandards,
       updateStandard, deleteStandard, pushWarning, markWarningRead, markAllWarningsRead, clearWarnings,
-      unreadWarnings, replaceAll, resetAll, syncing, syncError,
+      unreadWarnings, upsertMember, replaceAll, resetAll, syncing, syncError,
     ],
   )
 

@@ -9,8 +9,11 @@
  */
 
 /** Tag & atribut yang diizinkan lewat — sisanya dibuang. */
-const ALLOWED_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'SPAN', 'BR', 'DIV', 'P'])
-const ALLOWED_ATTRS = new Set(['style', 'class'])
+const ALLOWED_TAGS = new Set([
+  'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'SPAN', 'BR', 'DIV', 'P',
+  'H1', 'H2', 'FONT', 'MARK', 'UL', 'OL', 'LI', 'IMG',
+])
+const ALLOWED_ATTRS = new Set(['style', 'class', 'color', 'size', 'face', 'src', 'alt'])
 
 /** Warna yang ditawarkan palette — cocok untuk tema terang & gelap. */
 export const TEXT_COLORS = [
@@ -18,6 +21,12 @@ export const TEXT_COLORS = [
   '#0a84ff', '#5c78f0', '#7c3aed',
   '#28a868', '#0d9488', '#e09614',
   '#e23e3e', '#db2777', '#78350f',
+] as const
+
+/** Warna stabilo (marker) untuk blok teks terseleksi. */
+export const HIGHLIGHT_COLORS = [
+  '#fff173', '#fcdf6d', '#fdb8b8', '#ffc9de',
+  '#b5f0ca', '#a7e8eb', '#bcd7ff', '#e2c8ff',
 ] as const
 
 /** Ukuran font yang ditawarkan dropdown — px eksplisit biar konsisten antar browser. */
@@ -56,7 +65,15 @@ export function sanitizeStrict(html: string): string {
       }
       const clone = document.createElement(tag)
       for (const attr of Array.from(el.attributes)) {
-        if (!ALLOWED_ATTRS.has(attr.name.toLowerCase())) continue
+        const name = attr.name.toLowerCase()
+        if (!ALLOWED_ATTRS.has(name)) continue
+        // src gambar: hanya data: URI kecil hasil paste/unggah sendiri.
+        if (name === 'src') {
+          if (/^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(attr.value) && attr.value.length <= 800_000) {
+            clone.setAttribute('src', attr.value)
+          }
+          continue
+        }
         // style dibatasi ke properti format teks supaya tidak bisa dipakai
         // menyelundupkan url() atau expression().
         const safe = attr.value.replace(/[^a-z0-9#.,()%\s:;-]/gi, '')
@@ -96,6 +113,21 @@ export function renderLinedHtml(html: string): string {
         const el = child as HTMLElement
         if (el.tagName === 'BR') {
           flush()
+          continue
+        }
+        if (el.tagName === 'UL' || el.tagName === 'OL') {
+          // List dirender jadi baris-baris berbullet/bernomor.
+          Array.from(el.children).forEach((li, idx) => {
+            if (li.tagName !== 'LI') return
+            flush()
+            current = el.tagName === 'UL' ? '•&nbsp;&nbsp;' : `${idx + 1}.&nbsp;&nbsp;`
+            walk(li, markup)
+            flush()
+          })
+          continue
+        }
+        if (el.tagName === 'IMG') {
+          current += `<img src="${escapeHtml(el.getAttribute('src') ?? '')}" alt="" style="max-width:100%;border-radius:8px">`
           continue
         }
         const open = wrapMarkup(el, markup)
@@ -138,6 +170,25 @@ function wrapMarkup(el: HTMLElement, inner: string): { inner: string; close: str
   if (tag === 'I' || tag === 'EM') { open += '<i>'; close = `</i>${close}` }
   if (tag === 'U') { open += '<u>'; close = `</u>${close}` }
   if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL') { open += '<s>'; close = `</s>${close}` }
+  if (tag === 'MARK') { open += '<mark>'; close = `</mark>${close}` }
+
+  if (tag === 'FONT') {
+    // <font> hasil execCommand direwrite jadi span CSS agar render tetap same.
+    const color = el.getAttribute('color') ?? ''
+    const fsize = el.getAttribute('size') ?? ''
+    const face = el.getAttribute('face') ?? ''
+    const css = [
+      color ? `color:${color}` : '',
+      fsize ? `font-size:${fontPointSizeToPx(fsize)}px` : '',
+      face ? `font-family:${face}` : '',
+    ].filter(Boolean).join(';')
+    if (css) { open += `<span style="${escapeHtml(css)}">`; close = `</span>${close}` }
+  }
+
+  if (tag === 'H1' || tag === 'H2') {
+    open += `<${tag.toLowerCase()} class="lined-h">`
+    close = `</${tag.toLowerCase()}>${close}`
+  }
 
   if (style) {
     // Tulis ulang style dari atribut yang sudah lolos sanitizeStrict.
@@ -146,6 +197,13 @@ function wrapMarkup(el: HTMLElement, inner: string): { inner: string; close: str
   }
 
   return { inner: `${open}${inner}`, close }
+}
+
+/** Konversi ukuran font[1..7] HTML lama ke px (3 = normal ~14px). */
+function fontPointSizeToPx(size: string): number {
+  const n = Number(size)
+  const table = [10, 11, 13, 14, 18, 23, 30]
+  return table[Number.isFinite(n) ? Math.min(6, Math.max(0, Math.round(n) - 1)) : 2] ?? 14
 }
 
 function escapeHtml(text: string): string {
