@@ -130,6 +130,15 @@ export function renderLinedHtml(html: string): string {
           current += `<img src="${escapeHtml(el.getAttribute('src') ?? '')}" alt="" style="max-width:100%;border-radius:8px">`
           continue
         }
+        if (el.tagName === 'H1' || el.tagName === 'H2') {
+          // Heading = barisnya sendiri; span (bukan h1) agar tetap valid di dalam <p>.
+          flush()
+          current = `<span class="lined-h ${el.tagName === 'H1' ? 'lined-h1' : 'lined-h2'}">`
+          walk(el, markup)
+          current += '</span>'
+          flush()
+          continue
+        }
         const open = wrapMarkup(el, markup)
         walk(el, open.inner)
         if (open.close) current += open.close
@@ -183,11 +192,6 @@ function wrapMarkup(el: HTMLElement, inner: string): { inner: string; close: str
       face ? `font-family:${face}` : '',
     ].filter(Boolean).join(';')
     if (css) { open += `<span style="${escapeHtml(css)}">`; close = `</span>${close}` }
-  }
-
-  if (tag === 'H1' || tag === 'H2') {
-    open += `<${tag.toLowerCase()} class="lined-h">`
-    close = `</${tag.toLowerCase()}>${close}`
   }
 
   if (style) {

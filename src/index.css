@@ -348,11 +348,12 @@
   }
   /* Judul H1/H2 di dalam teks bergaris tetap terbaca sebagai heading. */
   .lined-html .lined-h {
+    display: block;
     font-weight: 800;
     margin: 0.35em 0 0.1em;
   }
-  .lined-html h1.lined-h { font-size: 1.35em; }
-  .lined-html h2.lined-h { font-size: 1.18em; }
+  .lined-html .lined-h1 { font-size: 1.35em; }
+  .lined-html .lined-h2 { font-size: 1.18em; }
   /* Marker stabilo di kartu (render) — sama seperti di editor. */
   .lined-html mark,
   .rich-editor mark {

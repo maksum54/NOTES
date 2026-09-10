@@ -4,7 +4,7 @@ import { cx } from '@/lib/utils'
 import { FONT_SIZES, HIGHLIGHT_COLORS, TEXT_COLORS, sanitizeStrict } from '@/lib/richtext'
 import {
   BellIcon, CheckboxIcon, ImageIcon, MoreIcon,
-  PaletteIcon, PinIcon, RedoIcon, UndoIcon,
+  PaletteIcon, PinIcon, RedoIcon, UndoIcon, XIcon,
 } from '@/components/icons'
 import { GlassButton } from '@/components/glass/Glass'
 import { useData } from '@/context/DataContext'
@@ -52,6 +52,7 @@ export function TaskNoteModal({
   const { data } = useData()
   const titleRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const [draft, setDraft] = useState(initial)
   const [panel, setPanel] = useState<null | 'palette' | 'reminder' | 'more' | 'collab'>(null)
   const [format, setFormat] = useState({ bold: false, italic: false, underline: false, strike: false })
@@ -59,6 +60,8 @@ export function TaskNoteModal({
   const [empty, setEmpty] = useState(isEmptyHtml(initial.html))
   /* Lebar dialog bisa ditarik dari tepi kiri/kanan (px). */
   const [width, setWidth] = useState<number | null>(null)
+  /* Tinggi dialog bisa ditarik dari tepi atas/bawah (px). */
+  const [height, setHeight] = useState<number | null>(null)
 
   // Nilai masuk saat modal dibuka (bukan tiap render, agar kursor stabil).
   useEffect(() => {
@@ -74,7 +77,8 @@ export function TaskNoteModal({
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      // Saat melayang (pinned), Escape sengaja diabaikan — tutup lewat tombol X.
+      if (e.key === 'Escape' && !draft.pinned) onClose()
     }
     document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
@@ -83,7 +87,8 @@ export function TaskNoteModal({
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [open, onClose])
+    // draft.pinned disengaja: listener perlu mode terkini.
+  }, [open, onClose, draft.pinned])
 
   if (!open) return null
 
@@ -158,24 +163,59 @@ export function TaskNoteModal({
     emitBody()
   }
 
-  /** Stabilo (marker) area teks terseleksi — beda dari warna latar kartu. */
+  /** Stabilo (marker) area teks terseleksi — beda dari warna latar kartu.
+   *  Dipanggil lagi pada teks yang SAMA → stabilo hilang (toggle). */
   const applyHighlight = (hex: string) => {
     restoreSelection()
+    const sel = window.getSelection()
+    const el = editorRef.current
+    if (sel && el && sel.rangeCount > 0 && !sel.isCollapsed) {
+      // Deteksi: seluruh isi seleksi sudah di dalam <mark> berwarna sama?
+      const range = sel.getRangeAt(0)
+      const frag = range.cloneContents()
+      const probe = document.createElement('div')
+      probe.appendChild(frag)
+      const marks = Array.from(probe.querySelectorAll('mark'))
+      const fullyMarked =
+        marks.length > 0 &&
+        marks.every((m) => (m.getAttribute('data-bg') ?? m.style.backgroundColor).toLowerCase() === hex.toLowerCase()) &&
+        probe.textContent === marks.map((m) => m.textContent).join('')
+
+      if (fullyMarked) {
+        // Toggle OFF: bungkus <mark> dalam seleksi jadi teks polos.
+        const liveMarks = Array.from(el.querySelectorAll('mark')).filter((m) => range.intersectsNode(m))
+        liveMarks.forEach((m) => {
+          const parent = m.parentNode
+          if (!parent) return
+          while (m.firstChild) parent.insertBefore(m.firstChild, m)
+          parent.removeChild(m)
+          parent.normalize()
+        })
+        emitBody()
+        return
+      }
+    }
+
+    // Toggle ON: stabilo seleksi dengan warna.
     // Firefox tidak punya hiliteColor; styleWithCSS + bgColor jadi fallback.
-    document.execCommand('styleWithCSS', false, 'true')
+    document.execCommand('styleWithCSS', false, 'false')
     const ok = document.execCommand('hiliteColor', false, hex)
     if (!ok) document.execCommand('backColor', false, hex)
-    document.execCommand('styleWithCSS', false, 'false')
     refreshFormat()
     emitBody()
   }
 
-  /** Ganti blok baris saat ini menjadi H1/H2/paragraf. */
+  /** Ganti blok baris saat ini menjadi H1/H2/paragraf.
+   *  Bentuk '<h1>' (dengan kurung) paling kompatibel antar browser. */
   const applyBlock = (tag: 'h1' | 'h2' | 'p') => {
     restoreSelection()
-    document.execCommand('formatBlock', false, tag)
+    document.execCommand('formatBlock', false, `<${tag}>`)
     emitBody()
   }
+
+  /** Cegah tombol toolbar merebut fokus dari editor — seleksi tetap hidup,
+   *  jadi H1/H2/B/I/U/S/stabilo langsung kena teks yang diblok. */
+  const keepFocus = (e: React.MouseEvent) => e.preventDefault()
 
   /** Sisipkan gambar (base64) di posisi kursor; juga dipakai untuk paste. */
   const insertImage = (file: File) => {
@@ -210,6 +250,9 @@ export function TaskNoteModal({
     patch({ collaborators: list.includes(name) ? list.filter((x) => x !== name) : [...list, name] })
   }
 
+  /* Mode melayang: dipicu pin. Popup kecil menempel di pojok, halaman tetap bisa dipakai. */
+  const floating = draft.pinned
+
   /* Tarik tepi kiri/kanan dialog untuk melebarkan/mempersempit area input. */
   const startResize = (e: React.PointerEvent<HTMLDivElement>, side: 'left' | 'right') => {
     e.preventDefault()
@@ -218,7 +261,7 @@ export function TaskNoteModal({
     const startW = (width ?? window.innerWidth < 640 ? window.innerWidth - 32 : 576)
     const dir = side === 'right' ? 1 : -1
     const onMove = (ev: PointerEvent) => {
-      const next = Math.min(window.innerWidth - 24, Math.max(320, startW + dir * (ev.clientX - startX)))
+      const next = Math.min(window.innerWidth - 24, Math.max(floating ? 280 : 320, startW + dir * (ev.clientX - startX)))
       setWidth(next)
     }
     const onUp = () => {
@@ -229,39 +272,74 @@ export function TaskNoteModal({
     window.addEventListener('pointerup', onUp)
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-start justify-center p-4 sm:items-center">
-      <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+  /* Tarik tepi atas/bawah dialog untuk mengatur TINGGI area input. */
+  const startResizeV = (e: React.PointerEvent<HTMLDivElement>, side: 'top' | 'bottom') => {
+    e.preventDefault()
+    e.stopPropagation()
+    const startY = e.clientY
+    const startH = height ?? dialogRef.current?.offsetHeight ?? 480
+    const onMove = (ev: PointerEvent) => {
+      const delta = side === 'top' ? startY - ev.clientY : ev.clientY - startY
+      setHeight(Math.min(Math.round(window.innerHeight * 0.9), Math.max(240, startH + delta)))
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  const dialog = (
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal={!floating}
+      className={cx(
+        'relative flex w-full flex-col rounded-2xl border bg-white shadow-2xl outline-none',
+        floating
+          ? 'border-black/10 shadow-[0_18px_50px_-12px_rgb(0_0_0/0.45)] dark:border-white/15 dark:bg-[#1e2028]'
+          : 'max-h-[88dvh] border-black/10 dark:border-white/15 dark:bg-[#1e2028]',
+      )}
+      style={{
+        ...(draft.color ? { backgroundColor: draft.color } : null),
+        width: floating ? (width ? `${width}px` : 'min(92vw, 430px)') : width ? `${width}px` : undefined,
+        maxWidth: floating ? '92vw' : 'min(92vw, 1080px)',
+        height: height ? `${height}px` : undefined,
+        maxHeight: floating ? '72dvh' : '88dvh',
+      }}
+    >
+      {/* ---------- handle resize: kiri/kanan (lebar) & atas/bawah (tinggi) ---------- */}
       <div
-        role="dialog"
-        aria-modal="true"
-        className={cx(
-          'relative z-10 flex max-h-[88dvh] w-full flex-col rounded-2xl border border-black/10 bg-white shadow-2xl outline-none',
-          'dark:border-white/15 dark:bg-[#1e2028]',
-        )}
-        style={{
-          ...(draft.color ? { backgroundColor: draft.color } : null),
-          width: width ? `${width}px` : undefined,
-          maxWidth: 'min(92vw, 1080px)',
-        }}
+        onPointerDown={(e) => startResize(e, 'left')}
+        className="absolute bottom-10 left-0 top-4 z-20 w-1.5 cursor-ew-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+        aria-hidden="true"
       >
-        {/* ---------- handle resize kiri & kanan ---------- */}
-        <div
-          onPointerDown={(e) => startResize(e, 'left')}
-          className="absolute bottom-10 left-0 top-4 z-20 w-1.5 cursor-ew-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
-          aria-hidden="true"
-        >
-          <span className="absolute left-1 top-1/2 h-10 w-1 -translate-y-1/2 rounded-pill bg-ink/20" />
-        </div>
-        <div
-          onPointerDown={(e) => startResize(e, 'right')}
-          className="absolute bottom-10 right-0 top-4 z-20 w-1.5 cursor-ew-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
-          aria-hidden="true"
-        >
-          <span className="absolute right-1 top-1/2 h-10 w-1 -translate-y-1/2 rounded-pill bg-ink/20" />
-        </div>
-        {/* ---------- judul + pin ---------- */}
-        <div className="flex items-center gap-2 px-5 pt-4">
+        <span className="absolute left-1 top-1/2 h-10 w-1 -translate-y-1/2 rounded-pill bg-ink/20" />
+      </div>
+      <div
+        onPointerDown={(e) => startResize(e, 'right')}
+        className="absolute bottom-10 right-0 top-4 z-20 w-1.5 cursor-ew-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+        aria-hidden="true"
+      >
+        <span className="absolute right-1 top-1/2 h-10 w-1 -translate-y-1/2 rounded-pill bg-ink/20" />
+      </div>
+      <div
+        onPointerDown={(e) => startResizeV(e, 'top')}
+        className="absolute inset-x-4 top-0 z-20 h-1.5 cursor-ns-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+        aria-hidden="true"
+      >
+        <span className="absolute left-1/2 top-1 h-1 w-10 -translate-x-1/2 rounded-pill bg-ink/20" />
+      </div>
+      <div
+        onPointerDown={(e) => startResizeV(e, 'bottom')}
+        className="absolute inset-x-4 bottom-0 z-20 h-1.5 cursor-ns-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+        aria-hidden="true"
+      >
+        <span className="absolute bottom-1 left-1/2 h-1 w-10 -translate-x-1/2 rounded-pill bg-ink/20" />
+      </div>
+        {/* ---------- judul + pin + tutup ---------- */}
+        <div className="flex items-center gap-1 px-5 pt-3">
           <input
             ref={titleRef}
             value={draft.title}
@@ -276,6 +354,14 @@ export function TaskNoteModal({
             className={cx('grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-black/5 dark:hover:bg-white/10', draft.pinned && 'text-accent')}
           >
             <PinIcon className={cx('h-[18px] w-[18px]', draft.pinned && 'fill-current')} />
+          </button>
+          <button
+            type="button"
+            aria-label={t('common.close')}
+            onClick={onClose}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-soft hover:bg-black/5 hover:text-ink dark:hover:bg-white/10"
+          >
+            <XIcon className="h-[18px] w-[18px]" />
           </button>
         </div>
 
@@ -451,9 +537,9 @@ export function TaskNoteModal({
           )}
 
           {/* Format inline langsung di toolbar: H1 H2 Aa | size | B I U S | stabilo */}
-          <button type="button" title="Heading 1" className={toolBtn(false) + ' text-[12px] font-extrabold'} onClick={() => applyBlock('h1')}>H1</button>
-          <button type="button" title="Heading 2" className={toolBtn(false) + ' text-[12px] font-extrabold'} onClick={() => applyBlock('h2')}>H2</button>
-          <button type="button" title="Teks biasa" className={toolBtn(false) + ' text-[12px] font-bold'} onClick={() => applyBlock('p')}>Aa</button>
+          <button type="button" title="Heading 1" onMouseDown={keepFocus} className={toolBtn(false) + ' text-[12px] font-extrabold'} onClick={() => applyBlock('h1')}>H1</button>
+          <button type="button" title="Heading 2" onMouseDown={keepFocus} className={toolBtn(false) + ' text-[12px] font-extrabold'} onClick={() => applyBlock('h2')}>H2</button>
+          <button type="button" title="Teks biasa" onMouseDown={keepFocus} className={toolBtn(false) + ' text-[12px] font-bold'} onClick={() => applyBlock('p')}>Aa</button>
           <select
             aria-label="font size"
             value={size}
@@ -464,13 +550,14 @@ export function TaskNoteModal({
               <option key={px} value={px}>{px}</option>
             ))}
           </select>
-          <button type="button" aria-pressed={format.bold} title="Bold" className={toolBtn(format.bold) + ' text-[14px] font-bold'} onClick={() => applyCmd('bold')}>B</button>
-          <button type="button" aria-pressed={format.italic} title="Italic" className={toolBtn(format.italic) + ' text-[14px] italic'} onClick={() => applyCmd('italic')}>I</button>
-          <button type="button" aria-pressed={format.underline} title="Underline" className={toolBtn(format.underline) + ' text-[14px] underline'} onClick={() => applyCmd('underline')}>U</button>
-          <button type="button" aria-pressed={format.strike} title="Strikethrough" className={toolBtn(format.strike) + ' text-[14px] line-through'} onClick={() => applyCmd('strikeThrough')}>S</button>
+          <button type="button" aria-pressed={format.bold} title="Bold" onMouseDown={keepFocus} className={toolBtn(format.bold) + ' text-[14px] font-bold'} onClick={() => applyCmd('bold')}>B</button>
+          <button type="button" aria-pressed={format.italic} title="Italic" onMouseDown={keepFocus} className={toolBtn(format.italic) + ' text-[14px] italic'} onClick={() => applyCmd('italic')}>I</button>
+          <button type="button" aria-pressed={format.underline} title="Underline" onMouseDown={keepFocus} className={toolBtn(format.underline) + ' text-[14px] underline'} onClick={() => applyCmd('underline')}>U</button>
+          <button type="button" aria-pressed={format.strike} title="Strikethrough" onMouseDown={keepFocus} className={toolBtn(format.strike) + ' text-[14px] line-through'} onClick={() => applyCmd('strikeThrough')}>S</button>
           <button
             type="button"
             title="Stabilo"
+            onMouseDown={keepFocus}
             onClick={() => applyHighlight(HIGHLIGHT_COLORS[3])}
             className="grid h-9 w-9 place-items-center rounded-full text-ink-soft transition-colors hover:bg-black/5 dark:hover:bg-white/10"
           >
@@ -499,24 +586,39 @@ export function TaskNoteModal({
               e.target.value = ''
             }}
           />
-          <button type="button" title="Checkbox" className={toolBtn(false)} onClick={() => { restoreSelection(); document.execCommand('insertUnorderedList'); emitBody() }}>
+          <button type="button" title="Checkbox" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { restoreSelection(); document.execCommand('insertUnorderedList'); emitBody() }}>
             <CheckboxIcon className="h-[18px] w-[18px]" />
           </button>
           <button type="button" title={t('task.more')} className={toolBtn(panel === 'more')} onClick={() => setPanel(panel === 'more' ? null : 'more')}>
             <MoreIcon className="h-[18px] w-[18px]" />
           </button>
           <span className="mx-1 h-5 w-px bg-ink/10" />
-          <button type="button" title="Undo" className={toolBtn(false)} onClick={() => { document.execCommand('undo'); emitBody() }}>
+          <button type="button" title="Undo" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { document.execCommand('undo'); emitBody() }}>
             <UndoIcon className="h-[18px] w-[18px]" />
           </button>
-          <button type="button" title="Redo" className={toolBtn(false)} onClick={() => { document.execCommand('redo'); emitBody() }}>
+          <button type="button" title="Redo" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { document.execCommand('redo'); emitBody() }}>
             <RedoIcon className="h-[18px] w-[18px]" />
           </button>
           <GlassButton variant="ghost" size="sm" className="ml-auto" onClick={onClose}>
             {t('common.close')}
           </GlassButton>
         </div>
-      </div>
+    </div>
+  )
+
+  /* Pinned → popup melayang kecil di pojok kanan-bawah, tanpa backdrop gelap;
+     halaman tetap bisa dipakai dan popup tetap tampil. */
+  if (floating) {
+    return createPortal(
+      <div className="fixed bottom-4 right-4 z-[130]">{dialog}</div>,
+      document.body,
+    )
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[110] flex items-start justify-center p-4 sm:items-center">
+      <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div className="relative z-10 flex w-full justify-center">{dialog}</div>
     </div>,
     document.body,
   )
