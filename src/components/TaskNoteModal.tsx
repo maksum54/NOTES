@@ -74,6 +74,22 @@ export function TaskNoteModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  /* Jaring pengaman: kalau DOM editor pernah dibuat ulang (mis. saat popup
+     pindah mode normal<->melayang) sedangkan isinya kosong padahal data ada,
+     isi kembali dari draft supaya teks tidak "hilang". */
+  const lastSetHtml = useRef(initial.html)
+  useEffect(() => {
+    if (!open) return
+    const el = editorRef.current
+    if (!el) return
+    const domEmpty = el.innerHTML === '' || el.innerHTML === '<br>'
+    if (domEmpty && draft.html && draft.html !== '<br>') {
+      el.innerHTML = draft.html
+      lastSetHtml.current = draft.html
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.pinned])
+
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -290,6 +306,30 @@ export function TaskNoteModal({
     window.addEventListener('pointerup', onUp)
   }
 
+  /* Geser posisi popup melayang: tarik header (judul) ke mana saja di layar. */
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!floating) return
+    e.preventDefault()
+    const rect = dialogRef.current?.getBoundingClientRect()
+    const start = pos ?? {
+      x: Math.max(8, window.innerWidth - (rect?.width ?? 430) - 16),
+      y: Math.max(8, window.innerHeight - (rect?.height ?? 480) - 16),
+    }
+    const onMove = (ev: PointerEvent) => {
+      setPos({
+        x: Math.min(window.innerWidth - 120, Math.max(4, start.x + ev.clientX - e.clientX)),
+        y: Math.min(window.innerHeight - 80, Math.max(4, start.y + ev.clientY - e.clientY)),
+      })
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   const dialog = (
     <div
       ref={dialogRef}
@@ -338,12 +378,16 @@ export function TaskNoteModal({
       >
         <span className="absolute bottom-1 left-1/2 h-1 w-10 -translate-x-1/2 rounded-pill bg-ink/20" />
       </div>
-        {/* ---------- judul + pin + tutup ---------- */}
-        <div className="flex items-center gap-1 px-5 pt-3">
+        {/* ---------- judul + pin + tutup (header = handle geser saat melayang) ---------- */}
+        <div
+          onPointerDown={startDrag}
+          className={cx('flex items-center gap-1 px-5 pt-3', floating && 'cursor-move touch-none select-none')}
+        >
           <input
             ref={titleRef}
             value={draft.title}
             onChange={(e) => patch({ title: e.target.value })}
+            onPointerDown={(e) => e.stopPropagation()}
             placeholder={t('task.titleLabel')}
             className="min-w-0 flex-1 bg-transparent text-[17px] font-semibold text-ink outline-none placeholder:text-ink-faint"
           />
@@ -606,19 +650,32 @@ export function TaskNoteModal({
     </div>
   )
 
-  /* Pinned → popup melayang kecil di pojok kanan-bawah, tanpa backdrop gelap;
-     halaman tetap bisa dipakai dan popup tetap tampil. */
-  if (floating) {
-    return createPortal(
-      <div className="fixed bottom-4 right-4 z-[130]">{dialog}</div>,
-      document.body,
-    )
-  }
-
+  /* SATU portal dengan STRUKTUR POHON TETAP: wrapper luar, backdrop, dan
+     pembungkus dialog selalu ada — mode normal/melayang hanya mengganti
+     class/posisi. Jadi DOM contentEditable tidak pernah dibuat ulang saat
+     pin dipasang/lepas (teks, kursor, dan seleksi tetap utuh). */
   return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-start justify-center p-4 sm:items-center">
-      <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
-      <div className="relative z-10 flex w-full justify-center">{dialog}</div>
+    <div
+      className={cx(
+        'fixed',
+        floating
+          ? 'z-[130]'
+          : 'inset-0 z-[110] flex items-start justify-center p-4 sm:items-center',
+      )}
+      style={
+        floating
+          ? pos
+            ? { left: pos.x, top: pos.y }
+            : { right: 16, bottom: 16 }
+          : undefined
+      }
+    >
+      <div
+        className={floating ? 'hidden' : 'absolute inset-0 bg-black/45 backdrop-blur-sm'}
+        onClick={floating ? undefined : onClose}
+        aria-hidden="true"
+      />
+      <div className={floating ? '' : 'relative z-10 flex w-full justify-center'}>{dialog}</div>
     </div>,
     document.body,
   )
