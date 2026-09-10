@@ -6,15 +6,18 @@
         CATATAN STANDARD --> BISA IMPORT DARI EXCEL
         CATATAN STANDARD --> ELECTRICAL / ELECTRONIC / OTHER --> PERKATEGORI
 
-   NAMA PROJECT --> NAMA BUILDING --> FINISH GOOD WAREHOUSE
-                                      RAW MATERIAL WAREHOUSE
-                                      UTILITY
-        tiap area --> SUMMARY CLIENT  --> (AI cek ke STANDARD IEC/NEC/PUIL/SNI)
-                                      --> WARNING DI HANDPHONE / PC
-                  --> TARGET SUBMIT   --> SUDAH / BELUM
-                  --> TASK (TUGAS)    --> SUDAH / BELUM
-                        TASK: gambar, coretan di gambar (papan tulis),
-                              link, tanya AI
+   NAMA PROJECT --> NAMA BUILDING (nama bebas diketik user)
+
+   Catatan: "FINISH GOOD WAREHOUSE", "RAW MATERIAL WAREHOUSE", dan
+   "UTILITY" pada flowchart adalah CONTOH nama building, bukan struktur
+   tetap -- jadi tidak dibuat otomatis sebagai sub-level.
+
+   tiap building --> SUMMARY CLIENT --> (AI cek ke STANDARD IEC/NEC/PUIL/SNI)
+                                    --> WARNING DI HANDPHONE / PC
+                 --> TARGET SUBMIT  --> SUDAH / BELUM
+                 --> TASK (TUGAS)   --> SUDAH / BELUM
+                       TASK: gambar, coretan di gambar (papan tulis),
+                             link, tanya AI
    ============================================================ */
 
 export type ISODate = string
@@ -43,10 +46,6 @@ export interface StandardNote {
   createdAt: ISODate
   updatedAt: ISODate
 }
-
-/** FINISH GOOD WAREHOUSE / RAW MATERIAL WAREHOUSE / UTILITY. */
-export type AreaKind = 'finish_good' | 'raw_material' | 'utility'
-export const AREA_KINDS: AreaKind[] = ['finish_good', 'raw_material', 'utility']
 
 /** SUDAH / BELUM. */
 export type DoneStatus = 'sudah' | 'belum'
@@ -133,11 +132,16 @@ export interface AiReview {
   verdict: string
 }
 
-/** Satu area building (FINISH GOOD / RAW MATERIAL / UTILITY). */
-export interface Area {
+/**
+ * NAMA BUILDING — unit terkecil yang dilacak.
+ *
+ * Namanya bebas, mis. "Raw Material Warehouse", "Utility", "Building A".
+ */
+export interface Building {
   id: string
-  kind: AreaKind
-  /** SUMMARY CLIENT khusus area ini. */
+  name: string
+  notes: string
+  /** SUMMARY CLIENT untuk building ini. */
   summaryClient: string
   /** Hasil review AI terakhir; null kalau belum pernah direview. */
   lastReview: AiReview | null
@@ -145,15 +149,6 @@ export interface Area {
   targetSubmitDate: ISODate | null
   targetSubmitStatus: DoneStatus
   tasks: Task[]
-  updatedAt: ISODate
-}
-
-/** NAMA BUILDING. */
-export interface Building {
-  id: string
-  name: string
-  notes: string
-  areas: Area[]
   createdAt: ISODate
   updatedAt: ISODate
 }
@@ -192,7 +187,7 @@ export interface AppData {
   updatedAt: ISODate
 }
 
-export const DATA_VERSION = 1
+export const DATA_VERSION = 2
 
 export function emptyData(): AppData {
   return {

@@ -28,7 +28,6 @@ export function DashboardPage() {
       href: string
       project: string
       building: string
-      area: string
       date: string
       left: number
     }[] = []
@@ -36,29 +35,26 @@ export function DashboardPage() {
     for (const project of data.projects) {
       buildings += project.buildings.length
       for (const building of project.buildings) {
-        for (const area of building.areas) {
-          tasksTotal += area.tasks.length
-          tasksDone += area.tasks.filter((task) => task.status === 'sudah').length
-          if (area.targetSubmitStatus === 'belum' && area.targetSubmitDate) {
-            const left = daysUntil(area.targetSubmitDate)
-            if (left !== null) {
-              upcoming.push({
-                key: area.id,
-                href: `/projects/${project.id}/buildings/${building.id}/areas/${area.id}`,
-                project: project.name,
-                building: building.name,
-                area: t(`areas.${area.kind}`),
-                date: area.targetSubmitDate,
-                left,
-              })
-            }
+        tasksTotal += building.tasks.length
+        tasksDone += building.tasks.filter((task) => task.status === 'sudah').length
+        if (building.targetSubmitStatus === 'belum' && building.targetSubmitDate) {
+          const left = daysUntil(building.targetSubmitDate)
+          if (left !== null) {
+            upcoming.push({
+              key: building.id,
+              href: `/projects/${project.id}/buildings/${building.id}`,
+              project: project.name,
+              building: building.name,
+              date: building.targetSubmitDate,
+              left,
+            })
           }
         }
       }
     }
     upcoming.sort((a, b) => a.left - b.left)
     return { buildings, tasksTotal, tasksDone, upcoming: upcoming.slice(0, 5) }
-  }, [data.projects, t])
+  }, [data.projects])
 
   const progress = stats.tasksTotal === 0 ? 0 : (stats.tasksDone / stats.tasksTotal) * 100
   const recentWarnings = data.warnings.slice(0, 4)
@@ -164,9 +160,9 @@ export function DashboardPage() {
                       className="flex items-center gap-3 rounded-2xl px-2 py-2.5 transition-colors hover:bg-glass-bg/20"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[14px] font-semibold text-ink">{u.area}</p>
+                        <p className="truncate text-[14px] font-semibold text-ink">{u.building}</p>
                         <p className="truncate text-[12px] text-ink-faint">
-                          {u.project} · {u.building} · {formatDate(u.date, lang)}
+                          {u.project} · {formatDate(u.date, lang)}
                         </p>
                       </div>
                       <Badge tone={u.left < 0 ? 'danger' : u.left <= 3 ? 'warn' : 'neutral'}>

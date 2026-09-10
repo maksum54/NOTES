@@ -9,7 +9,7 @@ import { LoginPage } from '@/pages/Login'
 import { DashboardPage } from '@/pages/Dashboard'
 import { ProjectsPage } from '@/pages/Projects'
 import { ProjectDetailPage } from '@/pages/ProjectDetail'
-import { AreaDetailPage } from '@/pages/AreaDetail'
+import { BuildingDetailPage } from '@/pages/BuildingDetail'
 import { TaskDetailPage } from '@/pages/TaskDetail'
 import { StandardsPage } from '@/pages/Standards'
 import { WarningsPage } from '@/pages/Warnings'
@@ -44,12 +44,9 @@ function Gate() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+          <Route path="/projects/:projectId/buildings/:buildingId" element={<BuildingDetailPage />} />
           <Route
-            path="/projects/:projectId/buildings/:buildingId/areas/:areaId"
-            element={<AreaDetailPage />}
-          />
-          <Route
-            path="/projects/:projectId/buildings/:buildingId/areas/:areaId/tasks/:taskId"
+            path="/projects/:projectId/buildings/:buildingId/tasks/:taskId"
             element={<TaskDetailPage />}
           />
           <Route path="/standards" element={<StandardsPage />} />

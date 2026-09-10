@@ -106,7 +106,7 @@ export const en: Dict = {
   },
   projects: {
     title: 'Projects',
-    subtitle: 'Project names, their buildings, and the areas inside.',
+    subtitle: 'Your projects and the buildings inside them.',
     newProject: 'New Project',
     projectName: 'Project Name',
     projectNamePlaceholder: 'e.g. Cikarang Plant Phase 2',
@@ -121,16 +121,14 @@ export const en: Dict = {
     buildingNamePlaceholder: 'e.g. Building A',
     buildingNotes: 'Building notes',
     noBuildings: 'No buildings in this project yet.',
+    buildingNameHint: 'Any name, e.g. Raw Material Warehouse, Utility, Finish Good Warehouse.',
     deleteProject: 'Delete project',
     deleteBuilding: 'Delete building',
   },
-  areas: {
-    finish_good: 'Finish Good Warehouse',
-    raw_material: 'Raw Material Warehouse',
-    utility: 'Utility',
+  building: {
     summaryClient: 'Client Summary',
     summaryHint:
-      "Write the client's request here. On save, the AI compares it against IEC/NEC/PUIL/SNI standards and raises a warning if anything deviates.",
+      "Write the client's request for this building. On save, the AI compares it against IEC/NEC/PUIL/SNI standards and raises a warning if anything deviates.",
     summaryPlaceholder:
       'e.g. Client wants 4x120mm2 NYY feeders run straight on racking without tray, panel set 60 cm off the wall…',
     reviewNow: 'Review with AI',
@@ -148,7 +146,7 @@ export const en: Dict = {
     tasks: 'Tasks',
     taskCount: '{done}/{total} done',
     newTask: 'New Task',
-    noTasks: 'No tasks in this area yet.',
+    noTasks: 'No tasks in this building yet.',
   },
   task: {
     title: 'Task',
@@ -230,9 +228,9 @@ export const en: Dict = {
       warning: 'Warning',
       info: 'Info',
     },
-    dueSoon: 'Submit target for {area} at {building} is {n} days away.',
-    overdue: 'Submit target for {area} at {building} is overdue.',
-    reviewFound: 'AI found {n} deviations in the {area} client summary.',
+    dueSoon: 'Submit target for {building} is {n} days away.',
+    overdue: 'Submit target for {building} is overdue.',
+    reviewFound: 'AI found {n} deviations in the {building} client summary.',
   },
   assistant: {
     title: 'AI Assistant',

@@ -5,12 +5,11 @@ import { useLang } from '@/context/LangContext'
 import { Badge, EmptyState, Field, GlassButton, GlassCard, GlassInput, GlassTextarea, ProgressBar } from '@/components/glass/Glass'
 import { ConfirmDialog, Modal } from '@/components/glass/Modal'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { AREA_ICON } from '@/components/areaIcon'
-import { BuildingIcon, ChevronRight, PlusIcon, TrashIcon, AlertIcon } from '@/components/icons'
+import { AlertIcon, BuildingIcon, ChevronRight, ClockIcon, PlusIcon, TrashIcon } from '@/components/icons'
 import { daysUntil, formatDate } from '@/lib/utils'
 import type { Building } from '@/types'
 
-/** NAMA PROJECT -> daftar NAMA BUILDING beserta ketiga areanya. */
+/** NAMA PROJECT -> daftar NAMA BUILDING (nama bebas, bukan tiga area tetap). */
 export function ProjectDetailPage() {
   const { projectId = '' } = useParams()
   const { t, lang } = useLang()
@@ -58,85 +57,84 @@ export function ProjectDetailPage() {
           />
         </GlassCard>
       ) : (
-        <div className="stack-fade space-y-3">
-          {project.buildings.map((building) => (
-            <GlassCard key={building.id}>
-              <div className="mb-4 flex items-start gap-3">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-info/15 text-info">
-                  <BuildingIcon />
+        <div className="stack-fade grid gap-3 sm:grid-cols-2">
+          {project.buildings.map((building) => {
+            const done = building.tasks.filter((task) => task.status === 'sudah').length
+            const left = daysUntil(building.targetSubmitDate)
+            const serious =
+              building.lastReview?.findings.filter((f) => f.severity !== 'info').length ?? 0
+            const href = `/projects/${project.id}/buildings/${building.id}`
+            return (
+              <GlassCard key={building.id} hover className="flex flex-col gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-info/15 text-info">
+                    <BuildingIcon />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <Link to={href} className="block">
+                      <h2 className="truncate text-[16px] font-bold text-ink hover:text-accent">
+                        {building.name}
+                      </h2>
+                    </Link>
+                    {building.notes && (
+                      <p className="line-clamp-2 text-[12.5px] leading-relaxed text-ink-faint">
+                        {building.notes}
+                      </p>
+                    )}
+                  </div>
+                  <GlassButton
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t('projects.deleteBuilding')}
+                    onClick={() => setPendingDelete(building)}
+                  >
+                    <TrashIcon className="h-[18px] w-[18px] text-ink-faint hover:text-danger" />
+                  </GlassButton>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-[17px] font-bold text-ink">{building.name}</h2>
-                  {building.notes && (
-                    <p className="line-clamp-2 text-[12.5px] leading-relaxed text-ink-faint">{building.notes}</p>
+
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge tone={building.targetSubmitStatus === 'sudah' ? 'ok' : 'neutral'}>
+                    {t(`status.${building.targetSubmitStatus}`)}
+                  </Badge>
+                  {serious > 0 && (
+                    <Badge tone="danger" icon={<AlertIcon className="h-3 w-3" />}>
+                      {serious}
+                    </Badge>
+                  )}
+                  {left !== null && building.targetSubmitStatus === 'belum' && (
+                    <Badge
+                      tone={left < 0 ? 'danger' : left <= 3 ? 'warn' : 'neutral'}
+                      icon={<ClockIcon className="h-3 w-3" />}
+                    >
+                      {formatDate(building.targetSubmitDate, lang)}
+                    </Badge>
                   )}
                 </div>
-                <GlassButton
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('projects.deleteBuilding')}
-                  onClick={() => setPendingDelete(building)}
+
+                {building.tasks.length > 0 ? (
+                  <>
+                    <ProgressBar
+                      value={(done / building.tasks.length) * 100}
+                      tone={done === building.tasks.length ? 'ok' : 'accent'}
+                    />
+                    <p className="text-[11.5px] font-semibold text-ink-faint">
+                      {t('building.taskCount', { done, total: building.tasks.length })}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[11.5px] text-ink-faint">{t('building.noTasks')}</p>
+                )}
+
+                <Link
+                  to={href}
+                  className="mt-auto flex items-center gap-1 pt-1 text-[13px] font-semibold text-accent hover:underline"
                 >
-                  <TrashIcon className="h-[18px] w-[18px] text-ink-faint hover:text-danger" />
-                </GlassButton>
-              </div>
-
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                {building.areas.map((area) => {
-                  const Icon = AREA_ICON[area.kind]
-                  const done = area.tasks.filter((task) => task.status === 'sudah').length
-                  const left = daysUntil(area.targetSubmitDate)
-                  const serious =
-                    area.lastReview?.findings.filter((f) => f.severity !== 'info').length ?? 0
-                  return (
-                    <Link
-                      key={area.id}
-                      to={`/projects/${project.id}/buildings/${building.id}/areas/${area.id}`}
-                      className="glass glass-hover flex flex-col gap-2.5 rounded-2xl p-3.5"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Icon className="h-[18px] w-[18px] shrink-0 text-ink-soft" />
-                        <p className="min-w-0 flex-1 truncate text-[13.5px] font-bold text-ink">
-                          {t(`areas.${area.kind}`)}
-                        </p>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" />
-                      </div>
-
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge tone={area.targetSubmitStatus === 'sudah' ? 'ok' : 'neutral'}>
-                          {t(`status.${area.targetSubmitStatus}`)}
-                        </Badge>
-                        {serious > 0 && (
-                          <Badge tone="danger" icon={<AlertIcon className="h-3 w-3" />}>
-                            {serious}
-                          </Badge>
-                        )}
-                        {left !== null && area.targetSubmitStatus === 'belum' && (
-                          <Badge tone={left < 0 ? 'danger' : left <= 3 ? 'warn' : 'neutral'}>
-                            {formatDate(area.targetSubmitDate, lang)}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {area.tasks.length > 0 ? (
-                        <>
-                          <ProgressBar
-                            value={(done / area.tasks.length) * 100}
-                            tone={done === area.tasks.length ? 'ok' : 'accent'}
-                          />
-                          <p className="text-[11.5px] font-semibold text-ink-faint">
-                            {t('areas.taskCount', { done, total: area.tasks.length })}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-[11.5px] text-ink-faint">{t('areas.noTasks')}</p>
-                      )}
-                    </Link>
-                  )
-                })}
-              </div>
-            </GlassCard>
-          ))}
+                  {t('common.open')}
+                  <ChevronRight className="h-4 w-4" />
+                </Link>
+              </GlassCard>
+            )
+          })}
         </div>
       )}
 
@@ -144,7 +142,7 @@ export function ProjectDetailPage() {
         open={open}
         onClose={() => setOpen(false)}
         title={t('projects.newBuilding')}
-        subtitle={`${t('areas.finish_good')} · ${t('areas.raw_material')} · ${t('areas.utility')}`}
+        subtitle={t('projects.buildingNameHint')}
         footer={
           <>
             <GlassButton variant="ghost" onClick={() => setOpen(false)}>
@@ -157,7 +155,7 @@ export function ProjectDetailPage() {
         }
       >
         <form onSubmit={submit} className="space-y-4">
-          <Field label={t('projects.buildingName')}>
+          <Field label={t('projects.buildingName')} hint={t('projects.buildingNameHint')}>
             <GlassInput
               autoFocus
               value={form.name}

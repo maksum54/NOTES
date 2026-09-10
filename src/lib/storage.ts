@@ -60,15 +60,31 @@ export function writeJSON(key: StorageKey, value: unknown): void {
   writeRaw(key, JSON.stringify(value))
 }
 
-/** Isi ulang field yang hilang supaya data lama tetap kompatibel. */
+/**
+ * Isi ulang field yang hilang supaya data lama tetap kompatibel.
+ *
+ * v1 -> v2: building dulu punya tiga area tetap (finish good / raw material /
+ * utility) yang menyimpan summary, target submit, dan task. Sekarang building
+ * sendiri yang menyimpannya. Bentuk project lama tidak kompatibel, jadi
+ * project dibuang dan warning ikut dibersihkan karena menunjuk rute mati.
+ * Catatan standard TIDAK terpengaruh perubahan ini, jadi tetap dipertahankan.
+ */
 export function migrate(input: unknown): AppData {
   const base = emptyData()
   if (!input || typeof input !== 'object') return base
-  const d = input as Partial<AppData>
+  const d = input as Partial<AppData> & { version?: number }
+
+  const standards = Array.isArray(d.standards) ? d.standards : []
+  const outdated = typeof d.version !== 'number' || d.version < DATA_VERSION
+
+  if (outdated) {
+    return { ...base, standards, updatedAt: new Date().toISOString() }
+  }
+
   return {
     version: DATA_VERSION,
     projects: Array.isArray(d.projects) ? d.projects : [],
-    standards: Array.isArray(d.standards) ? d.standards : [],
+    standards,
     warnings: Array.isArray(d.warnings) ? d.warnings : [],
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : base.updatedAt,
   }

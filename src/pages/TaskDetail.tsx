@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
-import { findArea, useData } from '@/context/DataContext'
+import { findBuilding, useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import {
   Badge, EmptyState, Field, GlassButton, GlassCard, GlassInput, GlassTextarea, Spinner,
@@ -21,13 +21,13 @@ import type { ChatMessage, TaskImage, TaskLink } from '@/types'
  * yang sudah membawa konteks project/area/standard.
  */
 export function TaskDetailPage() {
-  const { projectId = '', buildingId = '', areaId = '', taskId = '' } = useParams()
+  const { projectId = '', buildingId = '', taskId = '' } = useParams()
   const { t, lang } = useLang()
   const { data, updateTask, deleteTask, toggleTask } = useData()
 
-  const ids = { projectId, buildingId, areaId }
-  const found = useMemo(() => findArea(data, ids), [data, projectId, buildingId, areaId])
-  const task = found?.area.tasks.find((x) => x.id === taskId)
+  const ids = useMemo(() => ({ projectId, buildingId }), [projectId, buildingId])
+  const found = useMemo(() => findBuilding(data, ids), [data, ids])
+  const task = found?.building.tasks.find((x) => x.id === taskId)
 
   const fileRef = useRef<HTMLInputElement>(null)
   const [boardImage, setBoardImage] = useState<TaskImage | null>(null)
@@ -46,9 +46,8 @@ export function TaskDetailPage() {
   })
 
   if (!found || !task) return <Navigate to="/projects" replace />
-  const { project, building, area } = found
-  const areaLabel = t(`areas.${area.kind}`)
-  const areaHref = `/projects/${project.id}/buildings/${building.id}/areas/${area.id}`
+  const { project, building } = found
+  const buildingHref = `/projects/${project.id}/buildings/${building.id}`
 
   /* ---------- gambar ---------- */
 
@@ -121,10 +120,9 @@ export function TaskDetailPage() {
       const context = [
         `Project: ${project.name}`,
         `Building: ${building.name}`,
-        `Area: ${areaLabel}`,
         `Task: ${task.title}`,
         task.description && `Deskripsi task: ${task.description}`,
-        area.summaryClient && `Summary client area ini: ${area.summaryClient}`,
+        building.summaryClient && `Summary client building ini: ${building.summaryClient}`,
       ]
         .filter(Boolean)
         .join('\n')
@@ -148,11 +146,11 @@ export function TaskDetailPage() {
     <>
       <PageHeader
         title={task.title}
-        subtitle={`${project.name} · ${building.name} · ${areaLabel}`}
-        back={areaHref}
+        subtitle={`${project.name} · ${building.name}`}
+        back={buildingHref}
         crumbs={[
           { label: project.name, to: `/projects/${project.id}` },
-          { label: areaLabel, to: areaHref },
+          { label: building.name, to: buildingHref },
           { label: t('task.title') },
         ]}
         action={

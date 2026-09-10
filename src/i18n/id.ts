@@ -104,7 +104,7 @@ export const id = {
   },
   projects: {
     title: 'Project',
-    subtitle: 'Nama project, building, dan area di dalamnya.',
+    subtitle: 'Nama project beserta building di dalamnya.',
     newProject: 'Project Baru',
     projectName: 'Nama Project',
     projectNamePlaceholder: 'mis. Pabrik Cikarang Fase 2',
@@ -119,16 +119,14 @@ export const id = {
     buildingNamePlaceholder: 'mis. Building A',
     buildingNotes: 'Catatan building',
     noBuildings: 'Belum ada building di project ini.',
+    buildingNameHint: 'Nama bebas, mis. Raw Material Warehouse, Utility, Finish Good Warehouse.',
     deleteProject: 'Hapus project',
     deleteBuilding: 'Hapus building',
   },
-  areas: {
-    finish_good: 'Finish Good Warehouse',
-    raw_material: 'Raw Material Warehouse',
-    utility: 'Utility',
+  building: {
     summaryClient: 'Summary Client',
     summaryHint:
-      'Tulis ringkasan permintaan client di sini. Begitu disimpan, AI otomatis membandingkannya dengan standard IEC/NEC/PUIL/SNI dan mengirim peringatan kalau ada yang menyimpang.',
+      'Tulis ringkasan permintaan client untuk building ini. Begitu disimpan, AI otomatis membandingkannya dengan standard IEC/NEC/PUIL/SNI dan mengirim peringatan kalau ada yang menyimpang.',
     summaryPlaceholder:
       'mis. Client minta kabel feeder 4x120mm2 NYY ditarik langsung di atas rak tanpa tray, panel ditempatkan 60 cm dari dinding…',
     reviewNow: 'Review dengan AI',
@@ -146,7 +144,7 @@ export const id = {
     tasks: 'Task (Tugas)',
     taskCount: '{done}/{total} selesai',
     newTask: 'Task Baru',
-    noTasks: 'Belum ada task di area ini.',
+    noTasks: 'Belum ada task di building ini.',
   },
   task: {
     title: 'Task',
@@ -228,9 +226,9 @@ export const id = {
       warning: 'Perhatian',
       info: 'Info',
     },
-    dueSoon: 'Target submit {area} pada {building} tinggal {n} hari lagi.',
-    overdue: 'Target submit {area} pada {building} sudah lewat tenggat.',
-    reviewFound: 'AI menemukan {n} penyimpangan pada summary client {area}.',
+    dueSoon: 'Target submit {building} tinggal {n} hari lagi.',
+    overdue: 'Target submit {building} sudah lewat tenggat.',
+    reviewFound: 'AI menemukan {n} penyimpangan pada summary client {building}.',
   },
   assistant: {
     title: 'Asisten AI',

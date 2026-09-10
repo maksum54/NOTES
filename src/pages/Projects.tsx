@@ -51,7 +51,7 @@ export function ProjectsPage() {
       ) : (
         <div className="stack-fade grid gap-3 sm:grid-cols-2">
           {data.projects.map((project) => {
-            const tasks = project.buildings.flatMap((b) => b.areas.flatMap((a) => a.tasks))
+            const tasks = project.buildings.flatMap((b) => b.tasks)
             const done = tasks.filter((task) => task.status === 'sudah').length
             return (
               <GlassCard key={project.id} hover className="flex flex-col gap-3">
@@ -86,7 +86,7 @@ export function ProjectsPage() {
                   </Badge>
                   {tasks.length > 0 && (
                     <Badge tone={done === tasks.length ? 'ok' : 'accent'}>
-                      {t('areas.taskCount', { done, total: tasks.length })}
+                      {t('building.taskCount', { done, total: tasks.length })}
                     </Badge>
                   )}
                 </div>

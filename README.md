@@ -11,16 +11,20 @@ STORAGE GOOGLE DRIVE  <-->  CATATAN STANDARD
                             ├── BISA IMPORT DARI EXCEL
                             └── ELECTRICAL / ELECTRONIC / OTHER → PERKATEGORI
 
-NAMA PROJECT → NAMA BUILDING → FINISH GOOD WAREHOUSE
-                               RAW MATERIAL WAREHOUSE
-                               UTILITY
+NAMA PROJECT → NAMA BUILDING   (nama bebas diketik sendiri)
 
-     tiap area ├── SUMMARY CLIENT → AI cek ke STANDARD IEC/NEC/PUIL/SNI
+ tiap building ├── SUMMARY CLIENT → AI cek ke STANDARD IEC/NEC/PUIL/SNI
                │                  → WARNING DI HANDPHONE / PC
                ├── TARGET SUBMIT  → SUDAH / BELUM
                └── TASK (TUGAS)   → SUDAH / BELUM
                      └── gambar · coretan papan tulis · link · tanya AI
 ```
+
+> **Catatan soal building.** "Finish Good Warehouse", "Raw Material Warehouse",
+> dan "Utility" pada flowchart adalah *contoh* nama building, bukan struktur
+> tetap. Jadi ketiganya tidak dibuat otomatis — kamu menamai sendiri tiap
+> building sesuai kebutuhan project, dan building itulah yang langsung
+> menyimpan Summary Client, Target Submit, serta daftar Task-nya.
 
 ## Fitur
 
@@ -111,8 +115,9 @@ src/
 │   └── whiteboard/   Papan coretan di atas gambar
 ├── i18n/             Dictionary id.ts & en.ts
 ├── lib/              storage, ai (vikey), drive, excel, notify, utils
-├── pages/            Login, Dashboard, Projects, ProjectDetail, AreaDetail,
-│                     TaskDetail, Standards, Warnings, Assistant, Settings
+├── pages/            Login, Dashboard, Projects, ProjectDetail,
+│                     BuildingDetail, TaskDetail, Standards, Warnings,
+│                     Assistant, Settings
 └── types/            Model data yang diturunkan dari flowchart
 ```
 
@@ -124,3 +129,9 @@ src/
 - **Gambar dikompres** (maks 1600px, JPEG q82) sebelum disimpan supaya localStorage tidak cepat penuh.
 - **Coretan disimpan sebagai koordinat 0..1**, bukan piksel, jadi tetap menempel presisi di ukuran layar apa pun.
 - **API key AI tidak pernah masuk bundle produksi** — diisi user lewat Pengaturan.
+- **Building adalah unit terkecil.** Tidak ada level sub-area; nama building
+  bebas, sehingga satu project bisa berisi "Raw Material Warehouse", "Utility",
+  atau apa pun sesuai kebutuhan lapangan.
+- **Migrasi data v1 → v2.** Data dari versi sebelumnya (yang building-nya punya
+  tiga area tetap) tidak kompatibel, jadi project lama dibuang otomatis saat app
+  dibuka. Catatan standard tetap dipertahankan karena tidak terpengaruh.

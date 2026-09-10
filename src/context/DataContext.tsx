@@ -9,12 +9,9 @@ import {
   type ReactNode,
 } from 'react'
 import {
-  AREA_KINDS,
   emptyData,
   type AiReview,
   type AppData,
-  type Area,
-  type AreaKind,
   type Building,
   type ChatMessage,
   type DoneStatus,
@@ -43,22 +40,21 @@ interface DataValue {
   deleteProject: (id: string) => void
   addBuilding: (projectId: string, input: { name: string; notes: string }) => Building | null
   updateBuilding: (
-    projectId: string,
-    buildingId: string,
-    patch: Partial<Pick<Building, 'name' | 'notes'>>,
+    ids: BuildingIds,
+    patch: Partial<
+      Pick<Building, 'name' | 'notes' | 'summaryClient' | 'targetSubmitDate' | 'targetSubmitStatus'>
+    >,
   ) => void
   deleteBuilding: (projectId: string, buildingId: string) => void
-  /* -- area -- */
-  updateArea: (
-    ids: AreaIds,
-    patch: Partial<Pick<Area, 'summaryClient' | 'targetSubmitDate' | 'targetSubmitStatus'>>,
-  ) => void
-  runReview: (ids: AreaIds) => Promise<AiReview>
+  runReview: (ids: BuildingIds) => Promise<AiReview>
   /* -- task -- */
-  addTask: (ids: AreaIds, input: { title: string; description: string; dueDate: string | null }) => Task | null
-  updateTask: (ids: AreaIds, taskId: string, patch: Partial<Task>) => void
-  deleteTask: (ids: AreaIds, taskId: string) => void
-  toggleTask: (ids: AreaIds, taskId: string) => void
+  addTask: (
+    ids: BuildingIds,
+    input: { title: string; description: string; dueDate: string | null },
+  ) => Task | null
+  updateTask: (ids: BuildingIds, taskId: string, patch: Partial<Task>) => void
+  deleteTask: (ids: BuildingIds, taskId: string) => void
+  toggleTask: (ids: BuildingIds, taskId: string) => void
   /* -- standard -- */
   addStandard: (note: Omit<StandardNote, 'id' | 'createdAt' | 'updatedAt'>) => StandardNote
   addStandards: (notes: StandardNote[]) => void
@@ -77,28 +73,14 @@ interface DataValue {
   syncError: string | null
 }
 
-export interface AreaIds {
+export interface BuildingIds {
   projectId: string
   buildingId: string
-  areaId: string
 }
 
 const DataContext = createContext<DataValue | null>(null)
 
 /* ---------- helper pembuat entitas ---------- */
-
-function makeArea(kind: AreaKind): Area {
-  return {
-    id: uid('area'),
-    kind,
-    summaryClient: '',
-    lastReview: null,
-    targetSubmitDate: null,
-    targetSubmitStatus: 'belum',
-    tasks: [],
-    updatedAt: nowISO(),
-  }
-}
 
 function makeBuilding(name: string, notes: string): Building {
   const stamp = nowISO()
@@ -106,15 +88,18 @@ function makeBuilding(name: string, notes: string): Building {
     id: uid('bld'),
     name: name.trim(),
     notes: notes.trim(),
-    // Setiap building selalu punya tiga area sesuai flowchart.
-    areas: AREA_KINDS.map(makeArea),
+    summaryClient: '',
+    lastReview: null,
+    targetSubmitDate: null,
+    targetSubmitStatus: 'belum',
+    tasks: [],
     createdAt: stamp,
     updatedAt: stamp,
   }
 }
 
-/** Terapkan perubahan pada satu area tanpa memutasi state lama. */
-function mapArea(data: AppData, ids: AreaIds, fn: (area: Area) => Area): AppData {
+/** Terapkan perubahan pada satu building tanpa memutasi state lama. */
+function mapBuilding(data: AppData, ids: BuildingIds, fn: (b: Building) => Building): AppData {
   return {
     ...data,
     projects: data.projects.map((p) =>
@@ -124,30 +109,22 @@ function mapArea(data: AppData, ids: AreaIds, fn: (area: Area) => Area): AppData
             ...p,
             updatedAt: nowISO(),
             buildings: p.buildings.map((b) =>
-              b.id !== ids.buildingId
-                ? b
-                : {
-                    ...b,
-                    updatedAt: nowISO(),
-                    areas: b.areas.map((a) => (a.id !== ids.areaId ? a : { ...fn(a), updatedAt: nowISO() })),
-                  },
+              b.id !== ids.buildingId ? b : { ...fn(b), updatedAt: nowISO() },
             ),
           },
     ),
   }
 }
 
-export function findArea(
+export function findBuilding(
   data: AppData,
-  ids: AreaIds,
-): { project: Project; building: Building; area: Area } | null {
+  ids: BuildingIds,
+): { project: Project; building: Building } | null {
   const project = data.projects.find((p) => p.id === ids.projectId)
   if (!project) return null
   const building = project.buildings.find((b) => b.id === ids.buildingId)
   if (!building) return null
-  const area = building.areas.find((a) => a.id === ids.areaId)
-  if (!area) return null
-  return { project, building, area }
+  return { project, building }
 }
 
 /* ---------- provider ---------- */
@@ -247,21 +224,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const pending: Omit<Warning, 'id' | 'createdAt' | 'read'>[] = []
     for (const project of data.projects) {
       for (const building of project.buildings) {
-        for (const area of building.areas) {
-          if (area.targetSubmitStatus === 'sudah' || !area.targetSubmitDate) continue
-          const left = daysUntil(area.targetSubmitDate)
-          if (left === null || left > 7) continue
-          const areaLabel = t(`areas.${area.kind}`)
-          const href = `/projects/${project.id}/buildings/${building.id}/areas/${area.id}`
-          const vars = { area: areaLabel, building: building.name, n: String(Math.abs(left)) }
-          pending.push({
-            severity: left < 0 ? 'critical' : 'warning',
-            title: left < 0 ? t('common.overdue') : t('areas.targetSubmit'),
-            body: left < 0 ? t('warnings.overdue', vars) : t('warnings.dueSoon', vars),
-            href,
-            dedupeKey: `due:${area.id}:${area.targetSubmitDate}:${left < 0 ? 'over' : 'soon'}`,
-          })
-        }
+        if (building.targetSubmitStatus === 'sudah' || !building.targetSubmitDate) continue
+        const left = daysUntil(building.targetSubmitDate)
+        if (left === null || left > 7) continue
+        const vars = { building: building.name, project: project.name, n: String(Math.abs(left)) }
+        pending.push({
+          severity: left < 0 ? 'critical' : 'warning',
+          title: left < 0 ? t('common.overdue') : t('building.targetSubmit'),
+          body: left < 0 ? t('warnings.overdue', vars) : t('warnings.dueSoon', vars),
+          href: `/projects/${project.id}/buildings/${building.id}`,
+          dedupeKey: `due:${building.id}:${building.targetSubmitDate}:${left < 0 ? 'over' : 'soon'}`,
+        })
       }
     }
     pending.forEach(pushWarning)
@@ -324,21 +297,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   )
 
   const updateBuilding = useCallback<DataValue['updateBuilding']>(
-    (projectId, buildingId, patch) => {
-      mutate((prev) => ({
-        ...prev,
-        projects: prev.projects.map((p) =>
-          p.id !== projectId
-            ? p
-            : {
-                ...p,
-                updatedAt: nowISO(),
-                buildings: p.buildings.map((b) =>
-                  b.id === buildingId ? { ...b, ...patch, updatedAt: nowISO() } : b,
-                ),
-              },
-        ),
-      }))
+    (ids, patch) => {
+      mutate((prev) => mapBuilding(prev, ids, (b) => ({ ...b, ...patch })))
     },
     [mutate],
   )
@@ -357,45 +317,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [mutate],
   )
 
-  /* ---------- area ---------- */
-
-  const updateArea = useCallback<DataValue['updateArea']>(
-    (ids, patch) => {
-      mutate((prev) => mapArea(prev, ids, (area) => ({ ...area, ...patch })))
-    },
-    [mutate],
-  )
-
   /**
    * Inti flowchart: begitu SUMMARY CLIENT ditulis, AI membandingkannya dengan
    * CATATAN STANDARD lalu memunculkan WARNING kalau ada penyimpangan.
    */
   const runReview = useCallback<DataValue['runReview']>(
     async (ids) => {
-      const found = findArea(data, ids)
-      if (!found) throw new Error('area-not-found')
+      const found = findBuilding(data, ids)
+      if (!found) throw new Error('building-not-found')
       if (!isAiReady()) throw new Error('missing-api-key')
 
-      const areaLabel = t(`areas.${found.area.kind}`)
       const review = await reviewSummary({
-        summary: found.area.summaryClient,
+        summary: found.building.summaryClient,
         standards: data.standards,
         projectName: found.project.name,
         buildingName: found.building.name,
-        areaLabel,
         lang,
       })
 
-      mutate((prev) => mapArea(prev, ids, (area) => ({ ...area, lastReview: review })))
+      mutate((prev) => mapBuilding(prev, ids, (b) => ({ ...b, lastReview: review })))
 
       const serious = review.findings.filter((f) => f.severity !== 'info')
       if (serious.length > 0) {
         pushWarning({
           severity: serious.some((f) => f.severity === 'critical') ? 'critical' : 'warning',
-          title: `${found.building.name} — ${areaLabel}`,
-          body: t('warnings.reviewFound', { n: serious.length, area: areaLabel }),
-          href: `/projects/${ids.projectId}/buildings/${ids.buildingId}/areas/${ids.areaId}`,
-          dedupeKey: `review:${ids.areaId}:${review.id}`,
+          title: `${found.project.name} — ${found.building.name}`,
+          body: t('warnings.reviewFound', { n: serious.length, building: found.building.name }),
+          href: `/projects/${ids.projectId}/buildings/${ids.buildingId}`,
+          dedupeKey: `review:${ids.buildingId}:${review.id}`,
         })
       }
       return review
@@ -422,9 +371,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       let ok = false
       mutate((prev) =>
-        mapArea(prev, ids, (area) => {
+        mapBuilding(prev, ids, (b) => {
           ok = true
-          return { ...area, tasks: [...area.tasks, task] }
+          return { ...b, tasks: [...b.tasks, task] }
         }),
       )
       return ok ? task : null
@@ -435,9 +384,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const updateTask = useCallback<DataValue['updateTask']>(
     (ids, taskId, patch) => {
       mutate((prev) =>
-        mapArea(prev, ids, (area) => ({
-          ...area,
-          tasks: area.tasks.map((task) =>
+        mapBuilding(prev, ids, (b) => ({
+          ...b,
+          tasks: b.tasks.map((task) =>
             task.id === taskId ? { ...task, ...patch, id: task.id, updatedAt: nowISO() } : task,
           ),
         })),
@@ -449,7 +398,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const deleteTask = useCallback<DataValue['deleteTask']>(
     (ids, taskId) => {
       mutate((prev) =>
-        mapArea(prev, ids, (area) => ({ ...area, tasks: area.tasks.filter((task) => task.id !== taskId) })),
+        mapBuilding(prev, ids, (b) => ({ ...b, tasks: b.tasks.filter((task) => task.id !== taskId) })),
       )
     },
     [mutate],
@@ -458,9 +407,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const toggleTask = useCallback<DataValue['toggleTask']>(
     (ids, taskId) => {
       mutate((prev) =>
-        mapArea(prev, ids, (area) => ({
-          ...area,
-          tasks: area.tasks.map((task) => {
+        mapBuilding(prev, ids, (b) => ({
+          ...b,
+          tasks: b.tasks.map((task) => {
             if (task.id !== taskId) return task
             const status: DoneStatus = task.status === 'sudah' ? 'belum' : 'sudah'
             return { ...task, status, updatedAt: nowISO() }
@@ -526,7 +475,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addBuilding,
       updateBuilding,
       deleteBuilding,
-      updateArea,
       runReview,
       addTask,
       updateTask,
@@ -548,7 +496,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }),
     [
       data, addProject, updateProject, deleteProject, addBuilding, updateBuilding, deleteBuilding,
-      updateArea, runReview, addTask, updateTask, deleteTask, toggleTask, addStandard, addStandards,
+      runReview, addTask, updateTask, deleteTask, toggleTask, addStandard, addStandards,
       updateStandard, deleteStandard, pushWarning, markWarningRead, markAllWarningsRead, clearWarnings,
       unreadWarnings, replaceAll, resetAll, syncing, syncError,
     ],

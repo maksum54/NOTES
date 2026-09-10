@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { findArea, useData } from '@/context/DataContext'
+import { findBuilding, useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import {
   Badge, EmptyState, Field, GlassButton, GlassCard, GlassInput, GlassTextarea, ProgressBar,
@@ -8,28 +8,27 @@ import {
 import { ConfirmDialog, Modal } from '@/components/glass/Modal'
 import { Segmented } from '@/components/glass/Segmented'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { AREA_ICON } from '@/components/areaIcon'
 import {
-  AlertIcon, CheckIcon, ChevronRight, ClockIcon, ImageIcon, LinkIcon,
-  PlusIcon, SparkIcon, TrashIcon,
+  AlertIcon, BuildingIcon, CheckIcon, ChevronRight, ClockIcon, ImageIcon,
+  LinkIcon, PlusIcon, SparkIcon, TrashIcon,
 } from '@/components/icons'
 import { cx, daysUntil, formatDate, formatDateTime } from '@/lib/utils'
 import { isAiReady } from '@/lib/ai'
 import type { DoneStatus, Finding, Task } from '@/types'
 
 /**
- * Satu area building. Inilah tempat SUMMARY CLIENT ditulis; menyimpannya
+ * Satu building. Inilah tempat SUMMARY CLIENT ditulis; menyimpannya
  * memicu review AI terhadap CATATAN STANDARD dan memunculkan WARNING.
  */
-export function AreaDetailPage() {
-  const { projectId = '', buildingId = '', areaId = '' } = useParams()
+export function BuildingDetailPage() {
+  const { projectId = '', buildingId = '' } = useParams()
   const { t, lang } = useLang()
-  const { data, updateArea, runReview, addTask, deleteTask, toggleTask } = useData()
+  const { data, updateBuilding, runReview, addTask, deleteTask, toggleTask } = useData()
 
-  const ids = { projectId, buildingId, areaId }
-  const found = useMemo(() => findArea(data, ids), [data, projectId, buildingId, areaId])
+  const ids = useMemo(() => ({ projectId, buildingId }), [projectId, buildingId])
+  const found = useMemo(() => findBuilding(data, ids), [data, ids])
 
-  const [summary, setSummary] = useState(found?.area.summaryClient ?? '')
+  const [summary, setSummary] = useState(found?.building.summaryClient ?? '')
   const [dirty, setDirty] = useState(false)
   const [reviewing, setReviewing] = useState(false)
   const [reviewError, setReviewError] = useState<string | null>(null)
@@ -38,23 +37,21 @@ export function AreaDetailPage() {
   const [pendingDelete, setPendingDelete] = useState<Task | null>(null)
 
   if (!found) return <Navigate to="/projects" replace />
-  const { project, building, area } = found
+  const { project, building } = found
 
-  const Icon = AREA_ICON[area.kind]
-  const areaLabel = t(`areas.${area.kind}`)
-  const base = `/projects/${project.id}/buildings/${building.id}/areas/${area.id}`
-  const doneCount = area.tasks.filter((task) => task.status === 'sudah').length
-  const left = daysUntil(area.targetSubmitDate)
+  const base = `/projects/${project.id}/buildings/${building.id}`
+  const doneCount = building.tasks.filter((task) => task.status === 'sudah').length
+  const left = daysUntil(building.targetSubmitDate)
 
   const saveSummary = () => {
-    updateArea(ids, { summaryClient: summary })
+    updateBuilding(ids, { summaryClient: summary })
     setDirty(false)
   }
 
   /** Simpan dulu, baru minta AI mereview — sesuai alur di flowchart. */
   const handleReview = async () => {
     if (!summary.trim()) return
-    updateArea(ids, { summaryClient: summary })
+    updateBuilding(ids, { summaryClient: summary })
     setDirty(false)
     setReviewing(true)
     setReviewError(null)
@@ -79,14 +76,13 @@ export function AreaDetailPage() {
   return (
     <>
       <PageHeader
-        title={areaLabel}
-        subtitle={`${project.name} · ${building.name}`}
+        title={building.name}
+        subtitle={[project.name, building.notes].filter(Boolean).join(' · ') || undefined}
         back={`/projects/${project.id}`}
         crumbs={[
           { label: t('projects.title'), to: '/projects' },
           { label: project.name, to: `/projects/${project.id}` },
-          { label: building.name, to: `/projects/${project.id}` },
-          { label: areaLabel },
+          { label: building.name },
         ]}
       />
 
@@ -94,13 +90,13 @@ export function AreaDetailPage() {
         {/* ---------- SUMMARY CLIENT ---------- */}
         <GlassCard>
           <div className="mb-3 flex items-center gap-2">
-            <Icon className="h-[18px] w-[18px] text-ink-soft" />
-            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('areas.summaryClient')}</h2>
+            <BuildingIcon className="h-[18px] w-[18px] text-ink-soft" />
+            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('building.summaryClient')}</h2>
             {dirty && <Badge tone="warn">•</Badge>}
           </div>
 
           <p className="mb-3 rounded-2xl border border-accent/20 bg-accent/8 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-soft">
-            {t('areas.summaryHint')}
+            {t('building.summaryHint')}
           </p>
 
           <GlassTextarea
@@ -111,7 +107,7 @@ export function AreaDetailPage() {
             }}
             onBlur={() => dirty && saveSummary()}
             rows={6}
-            placeholder={t('areas.summaryPlaceholder')}
+            placeholder={t('building.summaryPlaceholder')}
           />
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -122,7 +118,7 @@ export function AreaDetailPage() {
               disabled={!summary.trim()}
               icon={!reviewing && <SparkIcon className="h-4 w-4" />}
             >
-              {reviewing ? t('areas.reviewing') : t('areas.reviewNow')}
+              {reviewing ? t('building.reviewing') : t('building.reviewNow')}
             </GlassButton>
             {dirty && (
               <GlassButton variant="glass" onClick={saveSummary}>
@@ -150,35 +146,35 @@ export function AreaDetailPage() {
         <GlassCard>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <SparkIcon className="h-[18px] w-[18px] text-ink-soft" />
-            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('areas.lastReview')}</h2>
-            {area.lastReview && (
+            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('building.lastReview')}</h2>
+            {building.lastReview && (
               <span className="text-[11.5px] text-ink-faint">
-                {formatDateTime(area.lastReview.createdAt, lang)} · {area.lastReview.model}
+                {formatDateTime(building.lastReview.createdAt, lang)} · {building.lastReview.model}
               </span>
             )}
           </div>
 
-          {!area.lastReview ? (
-            <EmptyState icon={<SparkIcon className="h-7 w-7" />} title={t('areas.neverReviewed')} />
+          {!building.lastReview ? (
+            <EmptyState icon={<SparkIcon className="h-7 w-7" />} title={t('building.neverReviewed')} />
           ) : (
             <div className="space-y-3">
-              {area.lastReview.verdict && (
+              {building.lastReview.verdict && (
                 <p className="rounded-2xl bg-glass-bg/20 px-4 py-3 text-[13.5px] leading-relaxed text-ink-soft">
                   <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-ink-faint">
-                    {t('areas.verdict')}
+                    {t('building.verdict')}
                   </span>
-                  {area.lastReview.verdict}
+                  {building.lastReview.verdict}
                 </p>
               )}
 
-              {area.lastReview.findings.length === 0 ? (
+              {building.lastReview.findings.length === 0 ? (
                 <div className="flex items-center gap-2 rounded-2xl border border-ok/25 bg-ok/10 px-4 py-3 text-[13.5px] font-semibold text-ok">
                   <CheckIcon className="h-[18px] w-[18px]" />
-                  {t('areas.noFindings')}
+                  {t('building.noFindings')}
                 </div>
               ) : (
                 <ul className="space-y-2.5">
-                  {area.lastReview.findings.map((f) => (
+                  {building.lastReview.findings.map((f) => (
                     <FindingCard key={f.id} finding={f} />
                   ))}
                 </ul>
@@ -191,8 +187,8 @@ export function AreaDetailPage() {
         <GlassCard>
           <div className="mb-3 flex items-center gap-2">
             <ClockIcon className="h-[18px] w-[18px] text-ink-soft" />
-            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('areas.targetSubmit')}</h2>
-            {left !== null && area.targetSubmitStatus === 'belum' && (
+            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('building.targetSubmit')}</h2>
+            {left !== null && building.targetSubmitStatus === 'belum' && (
               <Badge tone={left < 0 ? 'danger' : left <= 3 ? 'warn' : 'neutral'}>
                 {left < 0 ? t('common.overdue') : left === 0 ? t('common.today') : t('common.dueIn', { n: left })}
               </Badge>
@@ -200,17 +196,17 @@ export function AreaDetailPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t('areas.targetSubmitDate')}>
+            <Field label={t('building.targetSubmitDate')}>
               <GlassInput
                 type="date"
-                value={area.targetSubmitDate?.slice(0, 10) ?? ''}
-                onChange={(e) => updateArea(ids, { targetSubmitDate: e.target.value || null })}
+                value={building.targetSubmitDate?.slice(0, 10) ?? ''}
+                onChange={(e) => updateBuilding(ids, { targetSubmitDate: e.target.value || null })}
               />
             </Field>
             <Field label={t('common.status')} group>
               <Segmented<DoneStatus>
-                value={area.targetSubmitStatus}
-                onChange={(v) => updateArea(ids, { targetSubmitStatus: v })}
+                value={building.targetSubmitStatus}
+                onChange={(v) => updateBuilding(ids, { targetSubmitStatus: v })}
                 options={[
                   { value: 'belum', label: t('status.belum') },
                   { value: 'sudah', label: t('status.sudah') },
@@ -225,33 +221,33 @@ export function AreaDetailPage() {
         <GlassCard>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <CheckIcon className="h-[18px] w-[18px] text-ink-soft" />
-            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('areas.tasks')}</h2>
+            <h2 className="flex-1 text-[16px] font-bold text-ink">{t('building.tasks')}</h2>
             <GlassButton
               variant="primary"
               size="sm"
               onClick={() => setTaskOpen(true)}
               icon={<PlusIcon className="h-4 w-4" />}
             >
-              {t('areas.newTask')}
+              {t('building.newTask')}
             </GlassButton>
           </div>
 
-          {area.tasks.length === 0 ? (
-            <EmptyState icon={<CheckIcon className="h-7 w-7" />} title={t('areas.noTasks')} />
+          {building.tasks.length === 0 ? (
+            <EmptyState icon={<CheckIcon className="h-7 w-7" />} title={t('building.noTasks')} />
           ) : (
             <>
               <div className="mb-3 flex items-center gap-3">
                 <ProgressBar
-                  value={(doneCount / area.tasks.length) * 100}
-                  tone={doneCount === area.tasks.length ? 'ok' : 'accent'}
+                  value={(doneCount / building.tasks.length) * 100}
+                  tone={doneCount === building.tasks.length ? 'ok' : 'accent'}
                 />
                 <span className="shrink-0 text-[12px] font-semibold text-ink-faint">
-                  {t('areas.taskCount', { done: doneCount, total: area.tasks.length })}
+                  {t('building.taskCount', { done: doneCount, total: building.tasks.length })}
                 </span>
               </div>
 
               <ul className="-mx-2 space-y-0.5">
-                {area.tasks.map((task) => {
+                {building.tasks.map((task) => {
                   const taskLeft = daysUntil(task.dueDate)
                   return (
                     <li key={task.id} className="flex items-center gap-2.5 rounded-2xl px-2 py-2 hover:bg-glass-bg/20">
@@ -328,7 +324,7 @@ export function AreaDetailPage() {
       <Modal
         open={taskOpen}
         onClose={() => setTaskOpen(false)}
-        title={t('areas.newTask')}
+        title={t('building.newTask')}
         footer={
           <>
             <GlassButton variant="ghost" onClick={() => setTaskOpen(false)}>
@@ -398,7 +394,7 @@ function FindingCard({ finding }: { finding: Finding }) {
       <p className="text-[13.5px] font-semibold leading-relaxed text-ink">{finding.issue}</p>
       {finding.recommendation && (
         <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-soft">
-          <span className="font-bold text-ink-faint">{t('areas.recommendation')}: </span>
+          <span className="font-bold text-ink-faint">{t('building.recommendation')}: </span>
           {finding.recommendation}
         </p>
       )}

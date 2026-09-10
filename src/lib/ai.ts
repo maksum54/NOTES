@@ -166,7 +166,7 @@ export function buildStandardsContext(standards: StandardNote[]): string {
 
 const REVIEW_SYSTEM = `Kamu adalah reviewer teknis MEP/elektrikal senior yang menguasai standard IEC, NEC, PUIL (SNI 0225), dan SNI lain.
 
-Tugasmu: membaca "summary client" (permintaan/ringkasan dari client untuk sebuah area gudang atau utility) dan menilai apakah ada yang menyimpang dari standard.
+Tugasmu: membaca "summary client" (permintaan/ringkasan dari client untuk sebuah building) dan menilai apakah ada yang menyimpang dari standard.
 
 Aturan:
 - Utamakan CATATAN STANDARD milik user di bawah sebagai acuan utama. Kalau tidak ada yang relevan, boleh pakai pengetahuan umum IEC/NEC/PUIL/SNI, dan tandai referensinya seadanya.
@@ -234,7 +234,6 @@ export async function reviewSummary(args: {
   standards: StandardNote[]
   projectName: string
   buildingName: string
-  areaLabel: string
   lang: 'id' | 'en'
   signal?: AbortSignal
 }): Promise<AiReview> {
@@ -247,7 +246,6 @@ export async function reviewSummary(args: {
   const user = [
     `PROJECT: ${args.projectName}`,
     `BUILDING: ${args.buildingName}`,
-    `AREA: ${args.areaLabel}`,
     '',
     'CATATAN STANDARD MILIK USER:',
     buildStandardsContext(args.standards),
