@@ -1,34 +1,48 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import { Badge, GlassButton, GlassCard } from '@/components/glass/Glass'
-import { RichText } from '@/components/RichText'
+import { NoteCard } from '@/components/NoteCard'
+import { TaskNoteModal, type TaskNoteDraft } from '@/components/TaskNoteModal'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { CheckIcon, ChevronLeft, ChevronRight, ClockIcon, TaskIcon } from '@/components/icons'
-import { cx, daysUntil, formatDate } from '@/lib/utils'
+import { ArchiveIcon, CheckIcon, ClockIcon, TaskIcon } from '@/components/icons'
+import { cx, daysUntil, formatDate, formatDateTime } from '@/lib/utils'
 import type { Building, Project, Task } from '@/types'
 
-/** Jumlah task kartu yang tampil per "halaman" slider. */
-const PAGE_SIZE = 5
+/** Jumlah kartu yang tampil per "halaman" slider. */
+const PAGE_SIZE = 10
+
+interface TaskRow {
+  project: Project
+  building: Building
+  task: Task
+}
 
 /**
- * Section TASK lintas project: kartu task SUDAH / BELUM.
- - Maksimal 5 kartu per baris (grid auto-fit); kalau lebih dari 5,
-   muncul slider dengan panah kiri/kanan.
+ * Section TASK lintas project, kartunya ala Google Keep:
+ - klik kartu membuka pop-up editor (judul + isi + toolbar),
+ - hover memunculkan centang & pin,
+ - task terarsip masuk section Arsip di bawah.
  */
 export function TasksPage() {
   const { t } = useLang()
-  const { data } = useData()
+  const { data, updateTask, toggleTask } = useData()
+
+  const [editing, setEditing] = useState<TaskRow | null>(null)
 
   const groups = useMemo(() => {
+    const pinned: TaskRow[] = []
     const open: TaskRow[] = []
     const done: TaskRow[] = []
+    const archived: TaskRow[] = []
     for (const project of data.projects) {
       for (const building of project.buildings) {
         for (const task of building.tasks) {
           const row: TaskRow = { project, building, task }
-          ;(task.status === 'sudah' ? done : open).push(row)
+          if (task.archived) archived.push(row)
+          else if (task.status === 'sudah') done.push(row)
+          else if (task.pinned) pinned.push(row)
+          else open.push(row)
         }
       }
     }
@@ -39,10 +53,33 @@ export function TasksPage() {
       if (!b.task.dueDate) return -1
       return a.task.dueDate.localeCompare(b.task.dueDate)
     }
-    open.sort(byDue)
-    done.sort(byDue)
-    return { open, done }
+    ;[pinned, open, done, archived].forEach((list) => list.sort(byDue))
+    return { pinned, open, done, archived }
   }, [data.projects])
+
+  const openCount = groups.pinned.length + groups.open.length
+
+  /** Simpan perubahan dari pop-up — row di-refresh otomatis lewat store. */
+  const saveEdit = (row: TaskRow, draft: TaskNoteDraft) => {
+    updateTask(
+      { projectId: row.project.id, buildingId: row.building.id },
+      row.task.id,
+      {
+        title: draft.title,
+        description: draft.html,
+        pinned: draft.pinned,
+        dueDate: draft.dueDate,
+        archived: draft.archived,
+      },
+    )
+  }
+
+  const modalRow = editing
+    ? {
+        ...editing,
+        task: findTask(data.projects, editing) ?? editing.task,
+      }
+    : null
 
   return (
     <>
@@ -55,7 +92,7 @@ export function TasksPage() {
             <div className="mb-3 grid h-9 w-9 place-items-center rounded-xl bg-warn/15 text-warn">
               <ClockIcon className="h-[18px] w-[18px]" />
             </div>
-            <p className="text-[27px] font-extrabold leading-none tracking-tight text-ink">{groups.open.length}</p>
+            <p className="text-[27px] font-extrabold leading-none tracking-tight text-ink">{openCount}</p>
             <p className="mt-1.5 truncate text-[12px] font-semibold text-ink-faint">{t('tasks.open')}</p>
           </GlassCard>
           <GlassCard hover className="p-4">
@@ -67,81 +104,61 @@ export function TasksPage() {
           </GlassCard>
         </div>
 
+        {groups.pinned.length > 0 && (
+          <TaskSection title={t('tasks.pinned')} tone="warn" rows={groups.pinned} emptyTitle={t('tasks.allDone')} onOpen={setEditing} onToggle={toggleTask} />
+        )}
         <TaskSection
           title={t('tasks.open')}
           tone="warn"
           rows={groups.open}
           emptyTitle={t('tasks.allDone')}
           emptyHint={t('tasks.allDoneHint')}
-          renderDescription
+          onOpen={setEditing}
+          onToggle={toggleTask}
         />
-        <TaskSection title={t('tasks.done')} tone="ok" rows={groups.done} emptyTitle={t('tasks.noDone')} />
+        <TaskSection title={t('tasks.done')} tone="ok" rows={groups.done} emptyTitle={t('tasks.noDone')} onOpen={setEditing} onToggle={toggleTask} />
+        {groups.archived.length > 0 && (
+          <TaskSection
+            title={t('task.archivedSection')}
+            tone="neutral"
+            rows={groups.archived}
+            emptyTitle={t('task.archivedEmpty')}
+            onOpen={setEditing}
+            onToggle={toggleTask}
+            archived
+          />
+        )}
       </div>
+
+      {/* ---------- pop-up editor ala Keep ---------- */}
+      {modalRow && (
+        <TaskNoteModal
+          key={modalRow.task.id}
+          open
+          initial={{
+            title: modalRow.task.title,
+            html: modalRow.task.description,
+            pinned: modalRow.task.pinned ?? false,
+            color: null,
+            dueDate: modalRow.task.dueDate,
+            archived: modalRow.task.archived ?? false,
+          }}
+          editedAt={modalRow.task.updatedAt}
+          onChange={(draft) => saveEdit(modalRow, draft)}
+          onClose={() => setEditing(null)}
+          onArchive={() => {}}
+          onDelete={() => {}}
+        />
+      )}
     </>
   )
 }
 
-interface TaskRow {
-  project: Project
-  building: Building
-  task: Task
-}
-
-/** Satu kartu task — diklik langsung ke detail task. */
-function TaskCard({ row, tone, renderDescription }: { row: TaskRow; tone: 'warn' | 'ok'; renderDescription?: boolean }) {
-  const { lang } = useLang()
-  const navigate = useNavigate()
-  const { project, building, task } = row
-  const href = `/projects/${project.id}/buildings/${building.id}/tasks/${task.id}`
-  const left = daysUntil(task.dueDate)
-
-  return (
-    <button
-      type="button"
-      onClick={() => navigate(href)}
-      className={cx(
-        'glass glass-hover flex h-full w-full flex-col gap-2 rounded-2xl p-4 text-left',
-        'shadow-[0_10px_30px_-12px_rgb(var(--shadow)/0.45)]',
-        tone === 'ok' && 'opacity-75',
-      )}
-    >
-      <span className="flex w-full items-start gap-2.5">
-        <span
-          className={cx(
-            'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-pill border',
-            tone === 'ok' ? 'border-ok/50 bg-ok/15 text-ok' : 'border-ink/20 text-transparent',
-          )}
-        >
-          <CheckIcon className="h-3 w-3" />
-        </span>
-        <span
-          className={cx(
-            'min-w-0 flex-1 break-words text-[14px] font-bold leading-snug text-ink',
-            tone === 'ok' && 'line-through',
-          )}
-        >
-          {task.title}
-        </span>
-      </span>
-
-      {/* Deskripsi: maksimal ~7 baris, sisanya discroll di dalam kartu.
-          Bergaris seperti buku bila ada format; plain text tetap biasa. */}
-      {renderDescription && task.description && (
-        <span className="block max-h-40 overflow-y-auto break-words rounded-xl bg-glass-bg/25 px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
-          <RichText value={task.description} plainClassName="whitespace-pre-wrap" />
-        </span>
-      )}
-
-      <span className="mt-auto flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-ink-faint">
-        <span className="truncate">{project.name} · {building.name}</span>
-        {task.dueDate && (
-          <Badge tone={tone === 'ok' ? 'neutral' : left !== null && left < 0 ? 'danger' : 'neutral'}>
-            {formatDate(task.dueDate, lang)}
-          </Badge>
-        )}
-      </span>
-    </button>
-  )
+function findTask(projects: Project[], row: TaskRow): Task | undefined {
+  return projects
+    .find((p) => p.id === row.project.id)
+    ?.buildings.find((b) => b.id === row.building.id)
+    ?.tasks.find((x) => x.id === row.task.id)
 }
 
 function TaskSection({
@@ -150,16 +167,20 @@ function TaskSection({
   rows,
   emptyTitle,
   emptyHint,
-  renderDescription = false,
+  onOpen,
+  onToggle,
+  archived = false,
 }: {
   title: string
-  tone: 'warn' | 'ok'
+  tone: 'warn' | 'ok' | 'neutral'
   rows: TaskRow[]
   emptyTitle: string
   emptyHint?: string
-  renderDescription?: boolean
+  onOpen: (row: TaskRow) => void
+  onToggle: (ids: { projectId: string; buildingId: string }, taskId: string) => void
+  archived?: boolean
 }) {
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const [page, setPage] = useState(0)
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, pageCount - 1)
@@ -168,58 +189,67 @@ function TaskSection({
   return (
     <GlassCard>
       <div className="mb-3 flex items-center gap-2">
-        <TaskIcon className={cx('h-[18px] w-[18px]', tone === 'ok' ? 'text-ok' : 'text-warn')} />
-        <h2 className="flex-1 text-[15px] font-bold text-ink">{title}</h2>
-
-        {/* Slider: muncul hanya kalau task lebih dari 5. */}
-        {rows.length > PAGE_SIZE && (
-          <div className="flex items-center gap-1">
-            <GlassButton
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              aria-label={t('common.back')}
-              disabled={safePage === 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </GlassButton>
-            <span className="min-w-14 text-center text-[12px] font-bold text-ink-faint">
-              {safePage + 1}/{pageCount}
-            </span>
-            <GlassButton
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              aria-label={t('common.open')}
-              disabled={safePage >= pageCount - 1}
-              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </GlassButton>
-          </div>
+        {archived ? (
+          <ArchiveIcon className="h-[18px] w-[18px] text-ink-soft" />
+        ) : (
+          <TaskIcon className={cx('h-[18px] w-[18px]', tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : 'text-ink-soft')} />
         )}
-        <Badge tone={tone}>{rows.length}</Badge>
+        <h2 className="flex-1 text-[15px] font-bold text-ink">{title}</h2>
+        <Badge tone={tone === 'neutral' ? 'neutral' : tone}>{rows.length}</Badge>
       </div>
 
       {rows.length === 0 ? (
         <p className="py-8 text-center text-[13px] text-ink-faint">{emptyTitle}</p>
       ) : (
         <>
-          {/* Grid: 5 kartu muat satu baris di layar lebar, otomatis turun di layar kecil. */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {/* Masonry ala Keep: kolom CSS, kartu mengalir ke bawah tiap kolom. */}
+          <div className="columns-1 gap-3 sm:columns-2 lg:columns-3 xl:columns-5 [&>*]:mb-3 [&>*]:break-inside-avoid">
             {visible.map((row) => (
-              <TaskCard key={row.task.id} row={row} tone={tone} renderDescription={renderDescription} />
+              <NoteCard
+                key={row.task.id}
+                title={row.task.title}
+                html={row.task.description}
+                done={row.task.status === 'sudah'}
+                pinned={row.task.pinned}
+                meta={
+                  row.task.dueDate ? (
+                    <Badge
+                      tone={
+                        !archived && row.task.status === 'belum' && (daysUntil(row.task.dueDate) ?? 1) < 0
+                          ? 'danger'
+                          : 'neutral'
+                      }
+                    >
+                      {formatDate(row.task.dueDate, lang)}
+                    </Badge>
+                  ) : (
+                    <span className="truncate">{row.project.name} · {row.building.name}</span>
+                  )
+                }
+                onToggleDone={() => onToggle({ projectId: row.project.id, buildingId: row.building.id }, row.task.id)}
+                onOpen={() => onOpen(row)}
+              />
             ))}
           </div>
           {rows.length > PAGE_SIZE && (
-            <p className="mt-2 text-center text-[11.5px] text-ink-faint">
-              {t('tasks.showing', { a: safePage * PAGE_SIZE + 1, b: Math.min((safePage + 1) * PAGE_SIZE, rows.length), n: rows.length })}
-            </p>
+            <div className="mt-2 flex items-center justify-center gap-2">
+              <GlassButton variant="ghost" size="sm" disabled={safePage === 0} onClick={() => setPage((p) => p - 1)}>
+                {t('common.back')}
+              </GlassButton>
+              <span className="text-[12px] font-bold text-ink-faint">{safePage + 1}/{pageCount}</span>
+              <GlassButton variant="ghost" size="sm" disabled={safePage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
+                {t('common.open')}
+              </GlassButton>
+            </div>
           )}
         </>
       )}
-      {emptyHint && rows.length === 0 && null}
+      {emptyHint && rows.length === 0 && <p className="pb-4 text-center text-[12px] text-ink-faint">{emptyHint}</p>}
     </GlassCard>
   )
+}
+
+/** Format "Diedit 21.31" dipakai modal & kartu. */
+export function editedLabel(iso: string, lang: string): string {
+  return formatDateTime(iso, lang)
 }

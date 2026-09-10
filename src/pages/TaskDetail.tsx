@@ -7,7 +7,7 @@ import {
 } from '@/components/glass/Glass'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { CheckIcon, PenIcon, TrashIcon } from '@/components/icons'
+import { ArchiveIcon, CheckIcon, PenIcon, TrashIcon } from '@/components/icons'
 import { cx, formatDate, nowISO } from '@/lib/utils'
 import { useBufferedText } from '@/lib/useBufferedText'
 import type { CanvasScene, ChatMessage, ISODate, Task } from '@/types'
@@ -77,13 +77,22 @@ export function TaskDetailPage() {
           { label: t('task.title') },
         ]}
         action={
-          <GlassButton
-            variant={task.status === 'sudah' ? 'glass' : 'success'}
-            onClick={() => toggleTask(ids, task.id)}
-            icon={<CheckIcon className="h-4 w-4" />}
-          >
-            {task.status === 'sudah' ? t('task.markUndone') : t('task.markDone')}
-          </GlassButton>
+          <div className="flex items-center gap-2">
+            <GlassButton
+              variant="glass"
+              onClick={() => updateTask(ids, task.id, { archived: !task.archived })}
+              icon={<ArchiveIcon className="h-4 w-4" />}
+            >
+              {task.archived ? t('task.unarchive') : t('task.archive')}
+            </GlassButton>
+            <GlassButton
+              variant={task.status === 'sudah' ? 'glass' : 'success'}
+              onClick={() => toggleTask(ids, task.id)}
+              icon={<CheckIcon className="h-4 w-4" />}
+            >
+              {task.status === 'sudah' ? t('task.markUndone') : t('task.markDone')}
+            </GlassButton>
+          </div>
         }
       />
 

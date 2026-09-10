@@ -101,6 +101,10 @@ export interface Task {
   description: string
   status: DoneStatus
   dueDate: ISODate | null
+  /** Dipasang pin — naik ke atas daftar (ala Google Keep). */
+  pinned?: boolean
+  /** Diarsipkan — hilang dari daftar aktif, masih bisa dibuka dari section Arsip. */
+  archived?: boolean
   images: TaskImage[]
   links: TaskLink[]
   /** Riwayat "tanya sama AI" khusus task ini. */

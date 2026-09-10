@@ -364,3 +364,67 @@ export const ShrinkIcon = (p: P) => (
     <path d="M3 9h6V3M21 15h-6v6M9 21v-6H3M15 3v6h6" />
   </Base>
 )
+
+export const PinIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M12 17v5" />
+    <path d="M9 3h6l-.6 5.2 2.9 3.1a1 1 0 0 1-.73 1.68H7.43a1 1 0 0 1-.73-1.68l2.9-3.1L9 3Z" />
+  </Base>
+)
+
+export const ArchiveIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M3 4h18v4H3z" />
+    <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+    <path d="M10 12h4" />
+  </Base>
+)
+
+export const PaletteIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a1.5 1.5 0 0 1 0-3h6.5A3.5 3.5 0 0 0 22 10.5C22 6.4 17.5 3 12 3Z" />
+    <circle cx="7.5" cy="10.5" r="0.6" fill="currentColor" />
+    <circle cx="12" cy="7.5" r="0.6" fill="currentColor" />
+    <circle cx="16.5" cy="9" r="0.6" fill="currentColor" />
+    <circle cx="7.5" cy="15" r="0.6" fill="currentColor" />
+  </Base>
+)
+
+export const FormatIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M5 5h14" />
+    <path d="M12 5v14" />
+    <path d="M8 19h8" />
+    <path d="M9 5 7 12M15 5l2 7" />
+  </Base>
+)
+
+export const RedoIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M21 8v6h-6" />
+    <path d="M21 14a9 9 0 1 0-3 7" />
+  </Base>
+)
+
+export const MoreIcon = (p: P) => (
+  <Base {...p}>
+    <circle cx="12" cy="5" r="1" fill="currentColor" />
+    <circle cx="12" cy="12" r="1" fill="currentColor" />
+    <circle cx="12" cy="19" r="1" fill="currentColor" />
+  </Base>
+)
+
+export const CheckboxIcon = (p: P) => (
+  <Base {...p}>
+    <rect x="4" y="4" width="16" height="16" rx="3" />
+    <path d="m8.5 12 2.5 2.5 4.5-5" />
+  </Base>
+)
+
+export const PersonAddIcon = (p: P) => (
+  <Base {...p}>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" />
+    <path d="M19 8v6M16 11h6" />
+  </Base>
+)
