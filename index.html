@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="id" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5" />
+    <meta name="description" content="Catatan standard IEC/NEC/PUIL/SNI, tracking project & building, review otomatis dengan AI, sinkron ke Google Drive." />
+    <meta name="theme-color" content="#0b1020" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#eef2fb" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="NOTES" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <title>NOTES — Engineering Project Notes</title>
+    <script>
+      // Terapkan tema sebelum React mount supaya tidak ada "flash" warna salah.
+      (function () {
+        try {
+          var t = localStorage.getItem('notes.theme');
+          if (!t || t === 'system') {
+            t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          }
+          document.documentElement.classList.toggle('dark', t === 'dark');
+          document.documentElement.classList.toggle('light', t !== 'dark');
+          var l = localStorage.getItem('notes.lang');
+          document.documentElement.lang = l === 'en' ? 'en' : 'id';
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

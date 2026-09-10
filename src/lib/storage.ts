@@ -1,0 +1,110 @@
+import { DATA_VERSION, emptyData, type AppData } from '@/types'
+
+/**
+ * Pola localStorage-primary: data utama hidup di perangkat, Google Drive
+ * hanya lapisan sinkron. Kalau Drive/AI mati, app tetap jalan penuh.
+ */
+const KEYS = {
+  data: 'notes.data',
+  theme: 'notes.theme',
+  lang: 'notes.lang',
+  auth: 'notes.auth',
+  aiKey: 'notes.ai.key',
+  aiModel: 'notes.ai.model',
+  aiBaseUrl: 'notes.ai.baseUrl',
+  driveToken: 'notes.drive.token',
+  driveFileId: 'notes.drive.fileId',
+  driveLastSync: 'notes.drive.lastSync',
+  driveAuto: 'notes.drive.auto',
+  assistantChat: 'notes.assistant.chat',
+  installDismissed: 'notes.install.dismissed',
+} as const
+
+export type StorageKey = keyof typeof KEYS
+
+export function readRaw(key: StorageKey): string | null {
+  try {
+    return localStorage.getItem(KEYS[key])
+  } catch {
+    return null
+  }
+}
+
+export function writeRaw(key: StorageKey, value: string): void {
+  try {
+    localStorage.setItem(KEYS[key], value)
+  } catch (err) {
+    console.warn('[storage] gagal menulis', key, err)
+  }
+}
+
+export function removeRaw(key: StorageKey): void {
+  try {
+    localStorage.removeItem(KEYS[key])
+  } catch {
+    /* diamkan */
+  }
+}
+
+export function readJSON<T>(key: StorageKey, fallback: T): T {
+  const raw = readRaw(key)
+  if (!raw) return fallback
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+export function writeJSON(key: StorageKey, value: unknown): void {
+  writeRaw(key, JSON.stringify(value))
+}
+
+/** Isi ulang field yang hilang supaya data lama tetap kompatibel. */
+export function migrate(input: unknown): AppData {
+  const base = emptyData()
+  if (!input || typeof input !== 'object') return base
+  const d = input as Partial<AppData>
+  return {
+    version: DATA_VERSION,
+    projects: Array.isArray(d.projects) ? d.projects : [],
+    standards: Array.isArray(d.standards) ? d.standards : [],
+    warnings: Array.isArray(d.warnings) ? d.warnings : [],
+    updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : base.updatedAt,
+  }
+}
+
+export function loadData(): AppData {
+  return migrate(readJSON<unknown>('data', null))
+}
+
+export function saveData(data: AppData): void {
+  writeJSON('data', data)
+}
+
+export function storageBytes(): number {
+  try {
+    let total = 0
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i)
+      if (!k || !k.startsWith('notes.')) continue
+      total += k.length + (localStorage.getItem(k)?.length ?? 0)
+    }
+    return total * 2 // UTF-16
+  } catch {
+    return 0
+  }
+}
+
+export function clearAppStorage(): void {
+  try {
+    const keys: string[] = []
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith('notes.')) keys.push(k)
+    }
+    keys.forEach((k) => localStorage.removeItem(k))
+  } catch {
+    /* diamkan */
+  }
+}
