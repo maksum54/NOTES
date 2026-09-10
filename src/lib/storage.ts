@@ -20,6 +20,7 @@ const KEYS = {
   driveEverConnected: 'notes.drive.everConnected',
   assistantChat: 'notes.assistant.chat',
   installDismissed: 'notes.install.dismissed',
+  pinnedPopup: 'notes.pinnedPopup',
 } as const
 
 export type StorageKey = keyof typeof KEYS

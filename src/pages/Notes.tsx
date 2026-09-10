@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import { GlassCard } from '@/components/glass/Glass'
 import { NoteCard } from '@/components/NoteCard'
-import { TaskNoteModal, type TaskNoteDraft } from '@/components/TaskNoteModal'
+import { TaskNoteModal, type PopupBounds, type TaskNoteDraft } from '@/components/TaskNoteModal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ArchiveIcon, PenIcon, PinIcon } from '@/components/icons'
+import { readRaw } from '@/lib/storage'
 import type { Note } from '@/types'
 
 /**
@@ -19,6 +20,28 @@ export function NotesPage() {
   const { data, addNote, updateNote } = useData()
 
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [restoredBounds, setRestoredBounds] = useState<PopupBounds | null>(null)
+
+  /* Pulihkan popup pinned setelah reload (sama seperti halaman Task). */
+  useEffect(() => {
+    const raw = readRaw('pinnedPopup')
+    if (!raw) return
+    try {
+      const saved = JSON.parse(raw) as { key?: string; pos?: { x: number; y: number }; width?: number; height?: number }
+      if (!saved.key?.startsWith('note:')) return
+      const noteId = saved.key.slice(5)
+      if (data.notes.some((n) => n.id === noteId)) {
+        setEditingId(noteId)
+        setRestoredBounds({ pos: saved.pos, width: saved.width, height: saved.height })
+      } else {
+        localStorage.removeItem('notes.pinnedPopup')
+      }
+    } catch {
+      /* data korup — abaikan */
+    }
+    // Sengaja sekali per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const groups = useMemo(() => {
     const pinned: Note[] = []
@@ -118,8 +141,13 @@ export function NotesPage() {
             collaborators: editing.collaborators ?? [],
           }}
           editedAt={editing.updatedAt}
+          persistKey={`note:${editing.id}`}
+          initialBounds={restoredBounds ?? undefined}
           onChange={saveEdit}
-          onClose={() => setEditingId(null)}
+          onClose={() => {
+            setEditingId(null)
+            setRestoredBounds(null)
+          }}
         />
       )}
     </>

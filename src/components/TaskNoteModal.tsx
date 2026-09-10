@@ -9,6 +9,7 @@ import {
 import { GlassButton } from '@/components/glass/Glass'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
+import { removeRaw, writeRaw } from '@/lib/storage'
 import { formatDateTime } from '@/lib/utils'
 
 /**
@@ -32,6 +33,12 @@ export interface TaskNoteDraft {
   collaborators?: string[]
 }
 
+export interface PopupBounds {
+  pos?: { x: number; y: number }
+  width?: number
+  height?: number
+}
+
 interface TaskNoteModalProps {
   open: boolean
   initial: TaskNoteDraft
@@ -43,10 +50,16 @@ interface TaskNoteModalProps {
   onDelete?: () => void
   /** Lokasi task (project · building) — untuk panel kolaborator. */
   locationLabel?: string
+  /** Kunci persist popup pinned (mis. "task:<id>") supaya popup bisa
+   *  dipulihkan setelah browser di-reload saat berpindah aplikasi. */
+  persistKey?: string
+  /** Posisi & ukuran terakhir (hasil restore). */
+  initialBounds?: PopupBounds
 }
 
 export function TaskNoteModal({
   open, initial, editedAt, onChange, onClose, onArchive, onDelete, locationLabel,
+  persistKey, initialBounds,
 }: TaskNoteModalProps) {
   const { t, lang } = useLang()
   const { data } = useData()
@@ -59,9 +72,9 @@ export function TaskNoteModal({
   const [size, setSize] = useState(14)
   const [empty, setEmpty] = useState(isEmptyHtml(initial.html))
   /* Lebar dialog bisa ditarik dari tepi kiri/kanan (px). */
-  const [width, setWidth] = useState<number | null>(null)
+  const [width, setWidth] = useState<number | null>(initialBounds?.width ?? null)
   /* Tinggi dialog bisa ditarik dari tepi atas/bawah (px). */
-  const [height, setHeight] = useState<number | null>(null)
+  const [height, setHeight] = useState<number | null>(initialBounds?.height ?? null)
 
   // Nilai masuk saat modal dibuka (bukan tiap render, agar kursor stabil).
   useEffect(() => {
@@ -307,7 +320,26 @@ export function TaskNoteModal({
   }
 
   /* Geser posisi popup melayang: tarik header (judul) ke mana saja di layar. */
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(initialBounds?.pos ?? null)
+
+  /* Persist popup pinned: id + posisi + ukuran disimpan, jadi walau browser
+     me-reload saat user berpindah aplikasi, popup muncul lagi di tempat sama. */
+  const pinnedRef = useRef(false)
+  pinnedRef.current = draft.pinned
+  useEffect(() => {
+    if (!open || !persistKey) return
+    if (!draft.pinned) {
+      removeRaw('pinnedPopup')
+      return
+    }
+    writeRaw('pinnedPopup', JSON.stringify({ key: persistKey, pos, width, height }))
+  }, [open, persistKey, draft.pinned, pos, width, height])
+  useEffect(
+    () => () => {
+      if (pinnedRef.current && persistKey) removeRaw('pinnedPopup')
+    },
+    [persistKey],
+  )
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!floating) return
     e.preventDefault()
