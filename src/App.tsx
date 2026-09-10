@@ -3,6 +3,7 @@ import { ThemeProvider } from '@/context/ThemeContext'
 import { LangProvider } from '@/context/LangContext'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { DataProvider } from '@/context/DataContext'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Aurora } from '@/components/layout/Aurora'
 import { AppShell } from '@/components/layout/AppShell'
 import { LoginPage } from '@/pages/Login'
@@ -20,16 +21,18 @@ import { SettingsPage } from '@/pages/Settings'
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <LangProvider>
-        <AuthProvider>
-          <Aurora />
-          <BrowserRouter>
-            <Gate />
-          </BrowserRouter>
-        </AuthProvider>
-      </LangProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <LangProvider>
+          <AuthProvider>
+            <Aurora />
+            <BrowserRouter>
+              <Gate />
+            </BrowserRouter>
+          </AuthProvider>
+        </LangProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   )
 }
 

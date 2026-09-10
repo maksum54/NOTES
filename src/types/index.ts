@@ -105,8 +105,16 @@ export interface Task {
   links: TaskLink[]
   /** Riwayat "tanya sama AI" khusus task ini. */
   chat: ChatMessage[]
+  /** Papan canvas (Excalidraw) yang menempel langsung pada task ini. */
+  canvas?: CanvasScene | null
   createdAt: ISODate
   updatedAt: ISODate
+}
+
+/** Scene canvas Excalidraw: elemen + file biner (gambar yang di-paste). */
+export interface CanvasScene {
+  elements: unknown[]
+  files?: Record<string, { id: string; dataURL: string; mimeType: string; created: number }>
 }
 
 /** Temuan AI saat SUMMARY CLIENT direview terhadap standard. */

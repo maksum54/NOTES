@@ -190,6 +190,7 @@ export const en: Dict = {
     addImage: 'Add Image',
     imageHint: 'Tap an image to open the Excalidraw board. You can also paste (Ctrl+V) images straight onto the board.',
     noImages: 'No images yet.',
+    canvas: 'Canvas',
     links: 'Links',
     addLink: 'Add Link',
     linkLabel: 'Link label',

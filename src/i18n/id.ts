@@ -188,6 +188,7 @@ export const id = {
     addImage: 'Tambah Gambar',
     imageHint: 'Klik gambar untuk membuka papan gambar Excalidraw. Bisa juga paste (Ctrl+V) gambar langsung ke papan.',
     noImages: 'Belum ada gambar.',
+    canvas: 'Canvas',
     links: 'Link',
     addLink: 'Tambah Link',
     linkLabel: 'Label link',
