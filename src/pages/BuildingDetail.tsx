@@ -5,6 +5,7 @@ import { useLang } from '@/context/LangContext'
 import {
   Badge, Field, GlassButton, GlassCard, GlassInput, GlassTextarea,
 } from '@/components/glass/Glass'
+import { RichText } from '@/components/RichText'
 import { ConfirmDialog, Modal } from '@/components/glass/Modal'
 import { Segmented } from '@/components/glass/Segmented'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -275,10 +276,11 @@ function BuildingTaskCard({ row, onDelete }: { row: TaskRow; onDelete: (task: Ta
           </span>
         </span>
 
-        {/* Deskripsi: maksimal ~7 baris, sisanya discroll di dalam kartu. */}
+        {/* Deskripsi: maksimal ~7 baris, sisanya discroll di dalam kartu.
+            Bergaris seperti buku bila ada format; plain text tetap biasa. */}
         {task.description && (
-          <span className="block max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl bg-glass-bg/25 px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
-            {task.description}
+          <span className="block max-h-40 overflow-y-auto break-words rounded-xl bg-glass-bg/25 px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
+            <RichText value={task.description} plainClassName="whitespace-pre-wrap" />
           </span>
         )}
 

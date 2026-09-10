@@ -3,8 +3,9 @@ import { Navigate, useParams } from 'react-router-dom'
 import { findBuilding, useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import {
-  Badge, Field, GlassButton, GlassCard, GlassInput, GlassTextarea, Spinner,
+  Badge, Field, GlassButton, GlassCard, GlassInput, Spinner,
 } from '@/components/glass/Glass'
+import { RichTextEditor } from '@/components/RichTextEditor'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { CheckIcon, PenIcon, TrashIcon } from '@/components/icons'
 import { cx, formatDate, nowISO } from '@/lib/utils'
@@ -17,7 +18,7 @@ const ExcalidrawCanvas = lazy(() =>
 )
 
 /**
- * Detail TASK: deskripsi + canvas Excalidraw tertanam langsung.
+ * Detail TASK: deskripsi rich text + canvas Excalidraw tertanam langsung.
  * Canvas auto-save (di-debounce) — tidak perlu tombol simpan.
  */
 export function TaskDetailPage() {
@@ -34,11 +35,6 @@ export function TaskDetailPage() {
   const descriptionField = useBufferedText(task?.description ?? '', (next) => {
     if (currentTaskId) updateTask(ids, currentTaskId, { description: next })
   })
-  // Textarea tumbuh mengikuti isi: semua baris deskripsi terlihat tanpa scroll.
-  const descriptionRows = useMemo(() => {
-    const lines = descriptionField.value.split('\n').length
-    return Math.max(4, Math.min(24, lines + 1))
-  }, [descriptionField.value])
 
   /* ---------- canvas auto-save (debounce 800 ms) ---------- */
   const canvasTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -98,11 +94,13 @@ export function TaskDetailPage() {
             <Badge tone={task.status === 'sudah' ? 'ok' : 'neutral'}>{t(`status.${task.status}`)}</Badge>
             {task.dueDate && <Badge tone="neutral">{formatDate(task.dueDate, lang)}</Badge>}
           </div>
-          <GlassTextarea
-            {...descriptionField}
+          {/* Deskripsi kaya format: size, warna, B/I/U/S — tersimpan sebagai
+              HTML bersih. Saat kosong, masih bisa dipakai seperti textarea. */}
+          <RichTextEditor
+            value={descriptionField.value}
+            onChange={(html) => descriptionField.onChange({ target: { value: html } })}
             placeholder={t('task.descriptionPlaceholder')}
-            rows={descriptionRows}
-            className="resize-y leading-relaxed"
+            ariaLabel={t('common.description')}
           />
           <div className="mt-3">
             <Field label={t('task.dueDate')}>

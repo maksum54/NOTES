@@ -329,6 +329,23 @@
   .safe-top {
     padding-top: max(env(safe-area-inset-top), 0px);
   }
+
+  /* Editor & tampilan teks bergaris seperti buku tulis:
+     tiap baris punya garis hitam tipis di bawahnya. */
+  .rich-editor:empty::before {
+    content: attr(data-placeholder);
+    color: rgb(var(--ink-faint));
+    pointer-events: none;
+  }
+  .lined-html p.lined-line {
+    margin: 0;
+    min-height: 1.6em;
+    line-height: 1.6;
+    border-bottom: 1px solid rgb(var(--shadow) / 0.55);
+  }
+  .lined-html p.lined-line:last-child {
+    border-bottom: 0;
+  }
 }
 
 @layer utilities {
