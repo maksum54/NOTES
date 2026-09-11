@@ -306,8 +306,7 @@ export function Logo({ small }: { small?: boolean }) {
   return (
     <div
       className={cx(
-        'grid shrink-0 place-items-center rounded-2xl',
-        'bg-gradient-to-br from-accent to-accent-soft',
+        'grid shrink-0 place-items-center rounded-2xl bg-accent',
         'shadow-[0_6px_18px_-6px_rgb(var(--accent)/0.8)]',
         small ? 'h-8 w-8' : 'h-10 w-10',
       )}

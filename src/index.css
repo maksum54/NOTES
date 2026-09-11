@@ -133,54 +133,18 @@
    KOMPONEN GLASS
    ============================================================ */
 @layer components {
-  /* Latar aurora yang bergerak pelan di belakang semua panel kaca */
+  /* Latar belakang: warna solid tanpa gradient — tema gelap hitam, terang putih. */
   .aurora {
     position: fixed;
     inset: 0;
     z-index: -1;
     overflow: hidden;
-    background: linear-gradient(
-      160deg,
-      rgb(var(--page-1)) 0%,
-      rgb(var(--page-2)) 48%,
-      rgb(var(--page-3)) 100%
-    );
-  }
-  .aurora::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    backdrop-filter: blur(0px);
-    background-image: radial-gradient(rgb(var(--ink) / 0.05) 1px, transparent 1px);
-    background-size: 4px 4px;
-    opacity: 0.5;
-  }
-  .aurora-blob {
-    position: absolute;
-    border-radius: 999px;
-    filter: blur(90px);
-    opacity: 0.55;
-    will-change: transform;
-  }
-  .dark .aurora-blob {
-    opacity: 0.3;
-  }
-  /* Tema terang: blob nyaris tak terlihat — latar mendekati putih polos. */
-  html:not(.dark) .aurora-blob {
-    opacity: 0.14;
-    filter: blur(120px);
-  }
-  html:not(.dark) .aurora::after {
-    opacity: 0.2;
+    background: rgb(var(--page-1));
   }
 
-  /* Panel kaca dasar */
+  /* Panel kaca dasar: flat solid, tanpa gradient. */
   .glass {
-    background: linear-gradient(
-      140deg,
-      rgb(var(--glass-bg) / calc(var(--glass-alpha) + 0.06)),
-      rgb(var(--glass-bg) / calc(var(--glass-alpha) - 0.02))
-    );
+    background: rgb(var(--glass-bg) / var(--glass-alpha));
     border: 1px solid rgb(var(--glass-border) / var(--glass-border-alpha));
     backdrop-filter: blur(28px) saturate(180%);
     -webkit-backdrop-filter: blur(28px) saturate(180%);
@@ -208,11 +172,7 @@
   }
 
   .glass-strong {
-    background: linear-gradient(
-      140deg,
-      rgb(var(--glass-bg) / calc(var(--glass-alpha) + 0.18)),
-      rgb(var(--glass-bg) / calc(var(--glass-alpha) + 0.04))
-    );
+    background: rgb(var(--glass-bg) / calc(var(--glass-alpha) + 0.14));
     border: 1px solid rgb(var(--glass-border) / calc(var(--glass-border-alpha) + 0.12));
     backdrop-filter: blur(48px) saturate(190%);
     -webkit-backdrop-filter: blur(48px) saturate(190%);
@@ -230,22 +190,14 @@
     -webkit-backdrop-filter: blur(20px) saturate(140%);
   }
 
-  /* Kilau tipis melintasi permukaan kaca, khas material Apple */
+  /* Kilau tipis khas material Apple dinonaktifkan: tanpa gradient, panel
+     cukup memakai highlight inset di box-shadow. */
   .glass-sheen {
     position: relative;
     overflow: hidden;
   }
   .glass-sheen::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(
-      105deg,
-      transparent 20%,
-      rgb(var(--glass-highlight) / 0.14) 42%,
-      transparent 58%
-    );
+    display: none;
   }
 
   .glass-hover {
