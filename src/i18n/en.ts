@@ -19,6 +19,8 @@ export const en: Dict = {
     assistant: 'AI Assistant',
     storage: 'Storage',
     settings: 'Settings',
+    more: 'More',
+    menu: 'Menu',
   },
   common: {
     add: 'Add',

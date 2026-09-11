@@ -8,7 +8,8 @@ import { useData } from '@/context/DataContext'
 import { GlassButton } from '@/components/glass/Glass'
 import {
   BellIcon, CloudIcon, FolderIcon, GearIcon, GlobeIcon, HomeIcon,
-  MoonIcon, MonitorIcon, NoteIcon, OfflineIcon, PenIcon, SparkIcon, SunIcon, TaskIcon,
+  MenuIcon, MoonIcon, MonitorIcon, NoteIcon, OfflineIcon,
+  PenIcon, SparkIcon, SunIcon, TaskIcon,
 } from '@/components/icons'
 import { InstallPrompt } from './InstallPrompt'
 
@@ -37,6 +38,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   )
   const location = useLocation()
   const [online, setOnline] = useState(() => navigator.onLine)
+  // Tab bar mobile hanya muat 5 item di layar sempit; sisanya masuk sheet "Lainnya".
+  const [moreOpen, setMoreOpen] = useState(false)
 
   useEffect(() => {
     const on = () => setOnline(true)
@@ -54,6 +57,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
   }, [location.pathname])
 
+  // Tutup sheet "Lainnya" setiap pindah halaman.
+  useEffect(() => {
+    setMoreOpen(false)
+  }, [location.pathname])
+
   const items: NavItem[] = [
     { to: '/', labelKey: 'nav.dashboard', icon: HomeIcon },
     { to: '/projects', labelKey: 'nav.projects', icon: FolderIcon },
@@ -65,6 +73,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: '/storage', labelKey: 'nav.storage', icon: CloudIcon },
     { to: '/settings', labelKey: 'nav.settings', icon: GearIcon },
   ]
+
+  // Tab bar mobile hanya muat 5 item di layar sempit; sisanya masuk sheet "Lainnya".
+  const primaryItems = items.slice(0, 5)
+  const overflowItems = items.slice(5)
+  const moreActive = overflowItems.some((item) =>
+    item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to),
+  )
+  const moreBadge = overflowItems.reduce(
+    (n, item) => n + (item.badge ?? 0),
+    0,
+  )
 
   const ThemeIcon = theme === 'dark' ? MoonIcon : theme === 'light' ? SunIcon : MonitorIcon
   const nextTheme = theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark'
@@ -165,11 +184,59 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* --- Tab bar (mobile) --- */}
       <nav className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3 safe-bottom lg:hidden">
         <div className="glass-strong glass-sheen flex items-center gap-0.5 rounded-glass p-1.5">
-          {items.map((item) => (
+          {primaryItems.map((item) => (
             <TabLink key={item.to} item={item} label={t(item.labelKey)} />
           ))}
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            className={cx(
+              'relative flex flex-1 flex-col items-center gap-1 rounded-2xl px-1 py-2 transition-all',
+              moreActive && !moreOpen ? 'bg-glass-bg/30 text-accent' : 'text-ink-faint active:scale-95',
+            )}
+            aria-label={t('nav.more')}
+            aria-haspopup="dialog"
+            aria-expanded={moreOpen}
+          >
+            <span className="relative">
+              <MenuIcon className="h-[21px] w-[21px]" />
+              {moreBadge > 0 && (
+                <span className="absolute -right-1.5 -top-1 min-w-[15px] rounded-pill bg-danger px-1 text-center text-[9px] font-extrabold leading-[15px] text-white">
+                  {moreBadge > 9 ? '9+' : moreBadge}
+                </span>
+              )}
+            </span>
+            <span className="w-full truncate text-center text-[9.5px] font-bold leading-none">
+              {t('nav.more')}
+            </span>
+          </button>
         </div>
       </nav>
+
+      {/* --- Sheet "Lainnya" (mobile) --- */}
+      {moreOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/40 p-3 pt-3 safe-bottom backdrop-blur-sm lg:hidden"
+          onClick={() => setMoreOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('nav.more')}
+        >
+          <div
+            className="glass-strong glass-sheen w-full rounded-glass p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="px-2 pb-2 text-[11px] font-extrabold uppercase tracking-widest text-ink-faint">
+              {t('nav.menu')}
+            </p>
+            <div className="grid grid-cols-4 gap-1">
+              {overflowItems.map((item) => (
+                <MoreLink key={item.to} item={item} label={t(item.labelKey)} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <InstallPrompt />
     </div>
@@ -255,9 +322,38 @@ export function Logo({ small }: { small?: boolean }) {
         strokeLinejoin="round"
         aria-hidden="true"
       >
-        <path d="M13 3 5.5 13.5H11L10 21l7.5-10.5H12Z" />
+        {/* Lembar catatan dengan sudut terlipat — konsisten dengan icon PWA. */}
+        <path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5Z" />
+        <path d="M13.5 3v5.5H19" />
+        <path d="M9 13h6M9 17h6" />
       </svg>
     </div>
+  )
+}
+
+function MoreLink({ item, label }: { item: NavItem; label: string }) {
+  const Icon = item.icon
+  return (
+    <NavLink
+      to={item.to}
+      end={item.to === '/'}
+      className={({ isActive }) =>
+        cx(
+          'relative flex flex-col items-center gap-1.5 rounded-2xl px-1 py-2.5 text-[10px] font-semibold transition-all',
+          isActive ? 'bg-glass-bg/30 text-accent' : 'text-ink-soft active:scale-95',
+        )
+      }
+    >
+      <span className="relative">
+        <Icon className="h-[20px] w-[20px]" />
+        {!!item.badge && item.badge > 0 && (
+          <span className="absolute -right-1.5 -top-1 min-w-[15px] rounded-pill bg-danger px-1 text-center text-[9px] font-extrabold leading-[15px] text-white">
+            {item.badge > 9 ? '9+' : item.badge}
+          </span>
+        )}
+      </span>
+      <span className="line-clamp-1 text-center leading-none">{label}</span>
+    </NavLink>
   )
 }
 

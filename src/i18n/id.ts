@@ -17,6 +17,8 @@ export const id = {
     assistant: 'Asisten AI',
     storage: 'Storage',
     settings: 'Pengaturan',
+    more: 'Lainnya',
+    menu: 'Menu',
   },
   common: {
     add: 'Tambah',

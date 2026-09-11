@@ -4,7 +4,7 @@
    - Navigasi & API : network-first dengan fallback ke cache
    ============================================================ */
 
-const VERSION = 'v1'
+const VERSION = 'v2'
 const STATIC_CACHE = `notes-static-${VERSION}`
 const RUNTIME_CACHE = `notes-runtime-${VERSION}`
 
