@@ -125,7 +125,12 @@ export function AssistantPage() {
             content: buildUserContent(m.content, nextSent[m.id] ?? []),
           })),
         ],
-        { onDelta: (full) => setStreamText(full) },
+        {
+          onDelta: (full) => setStreamText(full),
+          // Blok :::file (Excel perhitungan) bisa memakan ribuan token —
+          // budget default mudah habis di model reasoning.
+          maxTokens: 8192,
+        },
       )
       setMessages((prev) => [
         ...prev,

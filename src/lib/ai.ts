@@ -129,6 +129,15 @@ const DEFAULT_MAX_TOKENS = 4096
  */
 const REASONING_BUDGET_RE = /budget on reasoning|reasoning tokens count|max_tokens budget|extended thinking/i
 
+/**
+ * Sebagian provider TIDAK membalas error saat budget reasoning habis — mereka
+ * membalas HTTP 200 dengan teks semacam "[No answer: the model spent its
+ * entire max_tokens budget on reasoning...]" SEBAGAI ISI JAWABAN. Kalau ini
+ * dibiarkan, user melihat pesan error sebagai "jawaban AI". Polanya kita
+ * anggap gagal sama seperti error HTTP di atas: ulangi dengan budget longgar.
+ */
+const NO_ANSWER_RE = /^\s*\[no answer\b/i
+
 /** Budget cadangan saat model kehabisan token untuk reasoning. */
 const REASONING_RETRY_MAX_TOKENS = 32768
 
@@ -192,8 +201,18 @@ async function chatOnce(messages: AiMessage[], opts: ChatOpts, maxTokens: number
     ? raw.map((part) => (part.type === 'text' ? part.text : '')).join('')
     : raw
   if (typeof content !== 'string') throw new AiError('empty-response', res.status)
-  opts.onDelta?.(content.trim())
-  return content.trim()
+  const trimmed = content.trim()
+  // "[No answer: ... budget on reasoning ...]" sebagai isi jawaban = gagal
+  // karena budget token. Dilempar sebagai error supaya `chat()` mengulang
+  // dengan budget yang jauh lebih longgar, bukan ditampilkan ke user.
+  if (NO_ANSWER_RE.test(trimmed) || REASONING_BUDGET_RE.test(trimmed)) {
+    throw new AiError(
+      'Model menghabiskan seluruh budget max_tokens untuk reasoning tanpa menghasilkan jawaban.',
+      res.status,
+    )
+  }
+  opts.onDelta?.(trimmed)
+  return trimmed
 }
 
 /**
@@ -311,6 +330,11 @@ export async function chatStream(messages: AiMessage[], opts: ChatOpts = {}): Pr
 
   // Sebagian provider menulis jawaban penuh di field message, bukan delta.
   if (full.trim().length === 0) return chat(messages, { ...opts, onDelta: undefined })
+  // Provider yang membalas "[No answer: ... budget on reasoning ...]" via
+  // stream juga: lempar ke jalur non-stream agar retry budget jalan.
+  if (NO_ANSWER_RE.test(full.trim())) {
+    return chat(messages, { ...opts, onDelta: undefined })
+  }
   return full.trim()
 }
 
