@@ -234,6 +234,7 @@ export const id = {
     reminderPick: 'Pilih tanggal & waktu',
     archiveFromEditor: 'Arsipkan task',
     deleteFromEditor: 'Hapus task',
+    pip: 'Tampilkan di atas aplikasi lain',
     openTask: 'Buka task lengkap',
     noCollaborators: 'Belum ada anggota lain yang memakai aplikasi ini.',
   },

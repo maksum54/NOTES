@@ -4,6 +4,7 @@ import { LangProvider } from '@/context/LangContext'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { DataProvider } from '@/context/DataContext'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { PinnedPopupHost } from '@/components/PinnedPopupHost'
 import { Aurora } from '@/components/layout/Aurora'
 import { AppShell } from '@/components/layout/AppShell'
 import { LoginPage } from '@/pages/Login'
@@ -45,6 +46,9 @@ function Gate() {
 
   return (
     <DataProvider>
+      {/* Popup note/task yang di-pin hidup di sini — di luar Routes, jadi
+          tetap terbuka walau user pindah halaman. */}
+      <PinnedPopupHost />
       <AppShell>
         <Routes>
           <Route path="/" element={<DashboardPage />} />
@@ -68,4 +72,5 @@ function Gate() {
       </AppShell>
     </DataProvider>
   )
+
 }

@@ -13,7 +13,7 @@ const ALLOWED_TAGS = new Set([
   'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'SPAN', 'BR', 'DIV', 'P',
   'H1', 'H2', 'FONT', 'MARK', 'UL', 'OL', 'LI', 'IMG',
 ])
-const ALLOWED_ATTRS = new Set(['style', 'class', 'color', 'size', 'face', 'src', 'alt'])
+const ALLOWED_ATTRS = new Set(['style', 'class', 'color', 'size', 'face', 'src', 'alt', 'data-check', 'data-checklist'])
 
 /** Warna yang ditawarkan palette — cocok untuk tema terang & gelap. */
 export const TEXT_COLORS = [
@@ -116,7 +116,21 @@ export function renderLinedHtml(html: string): string {
           continue
         }
         if (el.tagName === 'UL' || el.tagName === 'OL') {
-          // List dirender jadi baris-baris berbullet/bernomor.
+          // Checklist ala Keep: kotak centang tergambar (nonaktif) di kartu.
+          if (el.tagName === 'UL' && el.hasAttribute('data-checklist')) {
+            Array.from(el.children).forEach((li) => {
+              if (li.tagName !== 'LI') return
+              flush()
+              const on = li.getAttribute('data-check') === 'true'
+              current = on
+                ? '<span class="lined-check lined-check-on">☑</span>&nbsp;'
+                : '<span class="lined-check">☐</span>&nbsp;'
+              walk(li, markup)
+              flush()
+            })
+            continue
+          }
+          // List biasa dirender jadi baris-baris berbullet/bernomor.
           Array.from(el.children).forEach((li, idx) => {
             if (li.tagName !== 'LI') return
             flush()

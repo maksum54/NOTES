@@ -236,6 +236,7 @@ export const en: Dict = {
     reminderPick: 'Pick date & time',
     archiveFromEditor: 'Archive task',
     deleteFromEditor: 'Delete task',
+    pip: 'Show on top of other apps',
     openTask: 'Open full task',
     noCollaborators: 'No other app members yet.',
   },

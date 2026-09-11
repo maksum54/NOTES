@@ -39,6 +39,9 @@ export interface PopupBounds {
   height?: number
 }
 
+/** Event internal: ada popup pinned yang perlu diambil alih host global. */
+export const PINNED_EVENT = 'notes:pinned-popup'
+
 interface TaskNoteModalProps {
   open: boolean
   initial: TaskNoteDraft
@@ -55,11 +58,18 @@ interface TaskNoteModalProps {
   persistKey?: string
   /** Posisi & ukuran terakhir (hasil restore). */
   initialBounds?: PopupBounds
+  /** Dipanggil saat popup baru saja di-pin — halaman boleh menyerahkan
+   *  popup ke host global (PinnedPopupHost) supaya tetap hidup saat pindah halaman. */
+  onPinned?: () => void
+  /** Tampilkan tombol "tampil di atas aplikasi lain" (Document PiP). */
+  onPipRequest?: () => void
+  /** Kontainer portal (default document.body) — dipakai host untuk jendela PiP. */
+  portalContainer?: HTMLElement | null
 }
 
 export function TaskNoteModal({
   open, initial, editedAt, onChange, onClose, onArchive, onDelete, locationLabel,
-  persistKey, initialBounds,
+  persistKey, initialBounds, onPinned, onPipRequest, portalContainer,
 }: TaskNoteModalProps) {
   const { t, lang } = useLang()
   const { data } = useData()
@@ -75,6 +85,13 @@ export function TaskNoteModal({
   const [width, setWidth] = useState<number | null>(initialBounds?.width ?? null)
   /* Tinggi dialog bisa ditarik dari tepi atas/bawah (px). */
   const [height, setHeight] = useState<number | null>(initialBounds?.height ?? null)
+
+  /** Tutup sungguhan: bersihkan jejak popup pinned lalu tutup. Unmount karena
+   *  pindah halaman TIDAK lewat sini — jejaknya justru diserahkan ke host. */
+  const requestClose = () => {
+    if (persistKey && draft.pinned) removeRaw('pinnedPopup')
+    onClose()
+  }
 
   // Nilai masuk saat modal dibuka (bukan tiap render, agar kursor stabil).
   useEffect(() => {
@@ -107,17 +124,19 @@ export function TaskNoteModal({
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       // Saat melayang (pinned), Escape sengaja diabaikan — tutup lewat tombol X.
-      if (e.key === 'Escape' && !draft.pinned) onClose()
+      if (e.key === 'Escape' && !draft.pinned) requestClose()
     }
     document.addEventListener('keydown', onKey)
+    // Popup melayang TIDAK mengunci scroll halaman di belakangnya.
     const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    if (!draft.pinned) document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
+      if (!draft.pinned) document.body.style.overflow = prev
     }
     // draft.pinned disengaja: listener perlu mode terkini.
-  }, [open, onClose, draft.pinned])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, draft.pinned])
 
   if (!open) return null
 
@@ -192,36 +211,122 @@ export function TaskNoteModal({
     emitBody()
   }
 
+  /** Elemen "stabilo": <mark>, elemen ber-style background-color, atau
+   *  <font bgcolor> (bentuk lama execCommand). */
+  const isHighlightEl = (e: Element) =>
+    e.tagName === 'MARK' ||
+    /(^|[^-])background(?:-color)?:\s*(?!transparent|none|initial|inherit)/i.test(e.getAttribute('style') ?? '') ||
+    e.hasAttribute('bgcolor')
+
+  /** Bongkar elemen stabilo yang menyentuh range: isinya dibuka lalu
+   *  disatukan kembali dengan teks di sekelilingnya. */
+  const stripHighlightsInRange = (range: Range) => {
+    const el = editorRef.current
+    if (!el) return
+    const touched = Array.from(el.querySelectorAll('mark,span,font')).filter(
+      (m) => isHighlightEl(m) && range.intersectsNode(m),
+    )
+    touched.forEach((m) => {
+      const parent = m.parentNode
+      if (!parent) return
+      while (m.firstChild) parent.insertBefore(m.firstChild, m)
+      m.remove()
+      parent.normalize()
+    })
+    if (touched.length > 0) emitBody()
+  }
+
   /** Stabilo (marker) area teks terseleksi — beda dari warna latar kartu.
-   *  Dipanggil lagi pada teks yang SAMA → stabilo hilang (toggle). */
-  const applyHighlight = (hex: string) => {
+   *  Dipanggil lagi pada teks yang sudah distabilo → stabilo hilang (toggle).
+   *  Berlaku juga untuk seleksi yang menyentuh beberapa stabilo sekaligus,
+   *  walau warnanya berbeda (mis. satu baris pink, satu baris ungu).
+   *  Seleksi kolaps (kursor di dalam stabilo, tanpa blok teks) pada tombol
+   *  stabilo juga menghapus stabilo di posisi kursor. */
+  const applyHighlight = (hex: string, toggleOffAny = false) => {
     restoreSelection()
     const sel = window.getSelection()
     const el = editorRef.current
-    if (sel && el && sel.rangeCount > 0 && !sel.isCollapsed) {
-      // Deteksi: seluruh isi seleksi sudah di dalam <mark> berwarna sama?
+    if (sel && el && sel.rangeCount > 0) {
       const range = sel.getRangeAt(0)
-      const frag = range.cloneContents()
-      const probe = document.createElement('div')
-      probe.appendChild(frag)
-      const marks = Array.from(probe.querySelectorAll('mark'))
-      const fullyMarked =
-        marks.length > 0 &&
-        marks.every((m) => (m.getAttribute('data-bg') ?? m.style.backgroundColor).toLowerCase() === hex.toLowerCase()) &&
-        probe.textContent === marks.map((m) => m.textContent).join('')
 
-      if (fullyMarked) {
-        // Toggle OFF: bungkus <mark> dalam seleksi jadi teks polos.
-        const liveMarks = Array.from(el.querySelectorAll('mark')).filter((m) => range.intersectsNode(m))
-        liveMarks.forEach((m) => {
-          const parent = m.parentNode
-          if (!parent) return
-          while (m.firstChild) parent.insertBefore(m.firstChild, m)
-          parent.removeChild(m)
-          parent.normalize()
-        })
-        emitBody()
+      // Kursor menyentuh elemen stabilo (seleksi kolaps MAUPUN tidak)?
+      // Untuk tombol stabilo & warna "none": itu berarti hapus stabilo.
+      let anchor: Element | null = null
+      for (let cur: Node | null = range.startContainer; cur; cur = cur.parentNode) {
+        if (cur.nodeType === Node.ELEMENT_NODE && isHighlightEl(cur as Element)) {
+          anchor = cur as Element
+          break
+        }
+      }
+      if (!anchor && range.endContainer !== range.startContainer) {
+        for (let cur: Node | null = range.endContainer; cur; cur = cur.parentNode) {
+          if (cur.nodeType === Node.ELEMENT_NODE && isHighlightEl(cur as Element)) {
+            anchor = cur as Element
+            break
+          }
+        }
+      }
+
+      if (toggleOffAny && anchor) {
+        // Hapus stabilo tempat kursor menempel (plus yang tersentuh seleksi).
+        if (!sel.isCollapsed) stripHighlightsInRange(range)
+        else {
+          const parent = anchor.parentNode
+          if (parent) {
+            while (anchor.firstChild) parent.insertBefore(anchor.firstChild, anchor)
+            anchor.remove()
+            parent.normalize()
+            emitBody()
+          }
+        }
+        if (!sel.isCollapsed) return
         return
+      }
+
+      if (!sel.isCollapsed) {
+        const probe = document.createElement('div')
+        probe.appendChild(range.cloneContents())
+
+        // Apakah SETIAP teks non-kosong di seleksi sudah tertutup stabilo?
+        const probeHighlights = Array.from(probe.querySelectorAll('mark,span,font')).filter(isHighlightEl)
+        let covered = false
+        if (probeHighlights.length > 0) {
+          covered = true
+          const walker = document.createTreeWalker(probe, NodeFilter.SHOW_TEXT)
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (!(node.textContent ?? '').trim()) continue
+            let inside = false
+            for (let cur: Node | null = node; cur && cur !== probe; cur = cur.parentNode) {
+              if (cur.nodeType === Node.ELEMENT_NODE && isHighlightEl(cur as Element)) {
+                inside = true
+                break
+              }
+            }
+            if (!inside) {
+              covered = false
+              break
+            }
+          }
+        }
+
+        if (covered) {
+          // Semua warna stabilo di seleksi sama dengan hex ini? (palet: klik
+          // warna yang sama = hapus; tombol stabilo: hapus warna apa pun.)
+          const colorOf = (m: HTMLElement) =>
+            normColor(
+              (m.tagName === 'MARK' ? (m.getAttribute('data-bg') ?? '') || m.style.backgroundColor : '') ||
+                m.getAttribute('bgcolor') ||
+                (/background(?:-color)?:\s*([^;]+)/i.exec(m.getAttribute('style') ?? '')?.[1] ?? ''),
+            )
+          const allSameHex =
+            probeHighlights.length > 0 &&
+            probeHighlights.every((m) => colorOf(m as HTMLElement) === normColor(hex))
+
+          if (toggleOffAny || allSameHex) {
+            stripHighlightsInRange(range)
+            return
+          }
+        }
       }
     }
 
@@ -246,19 +351,129 @@ export function TaskNoteModal({
    *  jadi H1/H2/B/I/U/S/stabilo langsung kena teks yang diblok. */
   const keepFocus = (e: React.MouseEvent) => e.preventDefault()
 
-  /** Sisipkan gambar (base64) di posisi kursor; juga dipakai untuk paste. */
+  /** Sisipkan gambar (base64) di posisi kursor; juga dipakai untuk paste.
+   *  insertHTML sering gagal karena seleksi hilang saat file dialog membuka —
+   *  makanya kursor diselamatkan saat tombol diklik dan dipulihkan saat file
+   *  siap; bila execCommand tetap gagal, Range API dipakai langsung. */
   const insertImage = (file: File) => {
     if (!file.type.startsWith('image/')) return
     const reader = new FileReader()
     reader.onload = () => {
-      restoreSelection()
-      document.execCommand('insertHTML', false, `<img src="${reader.result}" alt="">`)
+      const el = editorRef.current
+      if (!el) return
+      el.focus()
+      const html = `<img src="${reader.result}" alt="">`
+      const ok = document.execCommand('insertHTML', false, html)
+      if (!ok) {
+        // Fallback: sisipkan di posisi kursor terakhir (atau di akhir editor).
+        const sel = window.getSelection()
+        let range: Range
+        if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+          range = sel.getRangeAt(0)
+        } else if (savedRange.current && el.contains(savedRange.current.startContainer)) {
+          range = savedRange.current
+        } else {
+          range = document.createRange()
+          range.selectNodeContents(el)
+          range.collapse(false)
+        }
+        range.deleteContents()
+        const tpl = document.createElement('template')
+        tpl.innerHTML = html
+        range.insertNode(tpl.content)
+        // Geser kursor ke setelah gambar supaya ketikan lanjut mulus.
+        range.collapse(false)
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+      }
       emitBody()
     }
     reader.readAsDataURL(file)
   }
 
+  /** Kotak centang ala Keep: sisipkan li dengan data-check di posisi kursor.
+   *  Item lama yang tersentuh kursor ikut berubah jadi item centang. */
+  const insertCheckbox = () => {
+    restoreSelection()
+    const el = editorRef.current
+    const sel = window.getSelection()
+    if (!el) return
+
+    const makeItem = (text = '') => {
+      const li = document.createElement('li')
+      li.setAttribute('data-check', 'false')
+      li.textContent = text
+      return li
+    }
+
+    // Jika kursor sudah di dalam item checklist -> centang/hapus centang saja.
+    let li: Element | null = null
+    for (let cur: Node | null = sel?.anchorNode ?? null; cur; cur = cur.parentNode) {
+      if (cur.nodeType === Node.ELEMENT_NODE) {
+        const e = cur as Element
+        if (e.tagName === 'LI' && e.hasAttribute('data-check')) { li = e; break }
+        if (e === el) break
+      }
+    }
+    if (li) {
+      const on = li.getAttribute('data-check') === 'true'
+      li.setAttribute('data-check', on ? 'false' : 'true')
+      emitBody()
+      return
+    }
+
+    // Kursor di dalam <li> list biasa -> ubah item itu jadi item centang.
+    for (let cur: Node | null = sel?.anchorNode ?? null; cur; cur = cur.parentNode) {
+      if (cur.nodeType === Node.ELEMENT_NODE) {
+        const e = cur as Element
+        if (e.tagName === 'LI' && (e.parentElement?.tagName === 'UL' || e.parentElement?.tagName === 'OL')) {
+          e.setAttribute('data-check', 'false')
+          if (e.parentElement.tagName === 'OL') {
+            const ul = document.createElement('ul')
+            ul.setAttribute('data-checklist', '')
+            e.replaceWith(ul)
+            ul.appendChild(e)
+          }
+          emitBody()
+          return
+        }
+        if (e === el) break
+      }
+    }
+
+    // Selain itu: sisipkan list checklist baru di posisi kursor.
+    const ul = document.createElement('ul')
+    ul.setAttribute('data-checklist', '')
+    ul.appendChild(makeItem())
+    if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0)
+      range.deleteContents()
+      range.insertNode(ul)
+    } else {
+      el.appendChild(ul)
+    }
+    // Pindahkan kursor ke dalam item kosong supaya langsung bisa mengetik.
+    const item = ul.querySelector('li')
+    const newRange = document.createRange()
+    if (item) {
+      newRange.selectNodeContents(item)
+      newRange.collapse(true)
+      sel?.removeAllRanges()
+      sel?.addRange(newRange)
+    }
+    emitBody()
+  }
+
   const fileRef = useRef<HTMLInputElement>(null)
+
+  /** Buka file picker tanpa kehilangan posisi kursor editor. */
+  const pickImage = () => {
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      savedRange.current = sel.getRangeAt(0).cloneRange()
+    }
+    fileRef.current?.click()
+  }
 
   const toolBtn = (active: boolean) =>
     cx(
@@ -282,15 +497,24 @@ export function TaskNoteModal({
   /* Mode melayang: dipicu pin. Popup kecil menempel di pojok, halaman tetap bisa dipakai. */
   const floating = draft.pinned
 
+  /* Viewport tempat popup dirender — jendela PiP punya ukurannya sendiri. */
+  const viewport = () => {
+    const pip = (window as unknown as { documentPictureInPicture?: { window?: Window | null } })
+      .documentPictureInPicture?.window
+    if (pip && !pip.closed) return { w: pip.innerWidth, h: pip.innerHeight }
+    return { w: window.innerWidth, h: window.innerHeight }
+  }
+
   /* Tarik tepi kiri/kanan dialog untuk melebarkan/mempersempit area input. */
   const startResize = (e: React.PointerEvent<HTMLDivElement>, side: 'left' | 'right') => {
     e.preventDefault()
     e.stopPropagation()
     const startX = e.clientX
-    const startW = (width ?? window.innerWidth < 640 ? window.innerWidth - 32 : 576)
+    const vp = viewport()
+    const startW = width ?? (vp.w < 640 ? vp.w - 32 : 576)
     const dir = side === 'right' ? 1 : -1
     const onMove = (ev: PointerEvent) => {
-      const next = Math.min(window.innerWidth - 24, Math.max(floating ? 280 : 320, startW + dir * (ev.clientX - startX)))
+      const next = Math.min(viewport().w - 24, Math.max(floating ? 280 : 320, startW + dir * (ev.clientX - startX)))
       setWidth(next)
     }
     const onUp = () => {
@@ -309,7 +533,7 @@ export function TaskNoteModal({
     const startH = height ?? dialogRef.current?.offsetHeight ?? 480
     const onMove = (ev: PointerEvent) => {
       const delta = side === 'top' ? startY - ev.clientY : ev.clientY - startY
-      setHeight(Math.min(Math.round(window.innerHeight * 0.9), Math.max(240, startH + delta)))
+      setHeight(Math.min(Math.round(viewport().h * 0.9), Math.max(240, startH + delta)))
     }
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)
@@ -323,22 +547,28 @@ export function TaskNoteModal({
   const [pos, setPos] = useState<{ x: number; y: number } | null>(initialBounds?.pos ?? null)
 
   /* Persist popup pinned: id + posisi + ukuran disimpan, jadi walau browser
-     me-reload saat user berpindah aplikasi, popup muncul lagi di tempat sama. */
+     me-reload saat user berpindah aplikasi, popup muncul lagi di tempat sama.
+     Hapus record hanya saat transisi pinned -> bebas, bukan saat mount. */
   const pinnedRef = useRef(false)
   pinnedRef.current = draft.pinned
+  const wasPinned = useRef(false)
   useEffect(() => {
     if (!open || !persistKey) return
     if (!draft.pinned) {
-      removeRaw('pinnedPopup')
+      if (wasPinned.current) removeRaw('pinnedPopup')
+      wasPinned.current = false
       return
     }
+    wasPinned.current = true
     writeRaw('pinnedPopup', JSON.stringify({ key: persistKey, pos, width, height }))
   }, [open, persistKey, draft.pinned, pos, width, height])
+  /* Modal dibongkar selagi melayang (mis. user pindah halaman) — serahkan
+     popup ke host global, jangan biarkan hilang. */
   useEffect(
     () => () => {
-      if (pinnedRef.current && persistKey) removeRaw('pinnedPopup')
+      if (pinnedRef.current) window.dispatchEvent(new CustomEvent(PINNED_EVENT))
     },
-    [persistKey],
+    [],
   )
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!floating) return
@@ -349,9 +579,10 @@ export function TaskNoteModal({
       y: Math.max(8, window.innerHeight - (rect?.height ?? 480) - 16),
     }
     const onMove = (ev: PointerEvent) => {
+      const vp = viewport()
       setPos({
-        x: Math.min(window.innerWidth - 120, Math.max(4, start.x + ev.clientX - e.clientX)),
-        y: Math.min(window.innerHeight - 80, Math.max(4, start.y + ev.clientY - e.clientY)),
+        x: Math.min(vp.w - 120, Math.max(4, start.x + ev.clientX - e.clientX)),
+        y: Math.min(vp.h - 80, Math.max(4, start.y + ev.clientY - e.clientY)),
       })
     }
     const onUp = () => {
@@ -426,15 +657,38 @@ export function TaskNoteModal({
           <button
             type="button"
             aria-label={draft.pinned ? t('task.unpin') : t('task.pin')}
-            onClick={() => patch({ pinned: !draft.pinned })}
+            onClick={() => {
+              const next = !draft.pinned
+              patch({ pinned: next })
+              if (next) {
+                // Serahkan popup ke host global: tetap hidup walau pindah halaman.
+                // Modal halaman ini akan menutup diri (onPinned) tanpa mengubah
+                // datanya — host yang melanjutkan popup.
+                window.setTimeout(() => {
+                  window.dispatchEvent(new CustomEvent(PINNED_EVENT))
+                  onPinned?.()
+                }, 40)
+              }
+            }}
             className={cx('grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-black/5 dark:hover:bg-white/10', draft.pinned && 'text-accent')}
           >
             <PinIcon className={cx('h-[18px] w-[18px]', draft.pinned && 'fill-current')} />
           </button>
+          {onPipRequest && (
+            <button
+              type="button"
+              aria-label={t('task.pip')}
+              title={t('task.pip')}
+              onClick={onPipRequest}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-soft hover:bg-black/5 hover:text-ink dark:hover:bg-white/10"
+            >
+              <PipIconSmall />
+            </button>
+          )}
           <button
             type="button"
             aria-label={t('common.close')}
-            onClick={onClose}
+            onClick={requestClose}
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-soft hover:bg-black/5 hover:text-ink dark:hover:bg-white/10"
           >
             <XIcon className="h-[18px] w-[18px]" />
@@ -474,6 +728,20 @@ export function TaskNoteModal({
               insertImage(img)
             }
           }}
+          onClick={(e) => {
+            // Klik kotak centang item checklist = toggle centang.
+            const target = e.target as HTMLElement
+            if (target.tagName === 'LI' && target.hasAttribute('data-check')) {
+              const rect = target.getBoundingClientRect()
+              // Hanya klik di area kotaknya (kiri ~1.6em) yang toggle.
+              if (e.clientX - rect.left <= 26) {
+                e.preventDefault()
+                const on = target.getAttribute('data-check') === 'true'
+                target.setAttribute('data-check', on ? 'false' : 'true')
+                emitBody()
+              }
+            }
+          }}
         />
         {empty && (
           <p className="pointer-events-none -mt-[calc(7rem-0.75rem)] px-5 py-3 text-[14px] text-ink-faint">
@@ -498,10 +766,10 @@ export function TaskNoteModal({
         <div className="relative flex flex-wrap items-center gap-0.5 px-3 pb-2 pt-1 safe-bottom">
           {/* Palet warna: warna teks + stabilo + latar kartu */}
           {panel === 'palette' && (
-            <PopPanel wide onClose={() => setPanel(null)}>
+            <PopPanel wide align="right" onClose={() => setPanel(null)}>
               <div className="flex items-center gap-2 px-2 pt-1.5">
-                <span className="text-[11px] font-semibold text-ink-faint">Teks</span>
-                <div className="grid flex-1 grid-cols-6 gap-2">
+                <span className="w-14 shrink-0 text-[11px] font-semibold text-ink-faint">Teks</span>
+                <div className="grid flex-1 grid-cols-6 justify-items-center gap-2">
                   {TEXT_COLORS.map((hex) => (
                     <button
                       key={hex}
@@ -515,10 +783,20 @@ export function TaskNoteModal({
                 </div>
               </div>
               <div className="flex items-center gap-2 px-2 pt-2">
-                <span className="text-[11px] font-semibold text-ink-faint">Stabilo</span>
-                <div className="flex flex-1 items-center gap-2">
-                  <button type="button" aria-label="marker none" onClick={() => applyHighlight('transparent')} className="h-6 w-6 rounded-full border border-black/15 bg-white dark:bg-[#1e2028]" />
-                  {HIGHLIGHT_COLORS.map((hex) => (
+                <span className="w-14 shrink-0 text-[11px] font-semibold text-ink-faint">Stabilo</span>
+                <div className="grid flex-1 grid-cols-6 justify-items-center gap-2">
+                  <button type="button" aria-label="marker none" onClick={() => applyHighlight('transparent', true)} className="h-6 w-6 rounded-full border border-black/15 bg-white dark:bg-[#1e2028]" />
+                  {HIGHLIGHT_COLORS.slice(0, 5).map((hex) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      aria-label={`marker ${hex}`}
+                      onClick={() => applyHighlight(hex)}
+                      className="h-6 w-6 rounded-full border border-black/10 transition-transform hover:scale-110"
+                      style={{ background: hex }}
+                    />
+                  ))}
+                  {HIGHLIGHT_COLORS.slice(5).map((hex) => (
                     <button
                       key={hex}
                       type="button"
@@ -530,19 +808,22 @@ export function TaskNoteModal({
                   ))}
                 </div>
               </div>
-              <p className="px-2 pb-1 pt-2 text-[11px] text-ink-faint">Latar kartu</p>
+              <p className="px-2 pb-1 pt-2 text-[11px] font-semibold text-ink-faint">Latar kartu</p>
               <div className="flex items-center gap-2 px-2 pb-1.5 pt-0">
-                <button type="button" aria-label="none" onClick={() => patch({ color: null })} className="h-6 w-6 rounded-full border border-black/15 bg-white dark:bg-[#1e2028]" />
-                {['#f28b82', '#fbbc04', '#fff475', '#ccff90', '#a7ffeb', '#cbf0f8', '#aecbfa', '#d7aefb', '#fdcfe8'].map((hex) => (
-                  <button key={hex} type="button" aria-label={hex} onClick={() => patch({ color: hex })} className="h-6 w-6 rounded-full border border-black/10 transition-transform hover:scale-110" style={{ background: hex }} />
-                ))}
+                <span className="w-14 shrink-0" />
+                <div className="grid flex-1 grid-cols-6 justify-items-center gap-2">
+                  <button type="button" aria-label="none" onClick={() => patch({ color: null })} className="h-6 w-6 rounded-full border border-black/15 bg-white dark:bg-[#1e2028]" />
+                  {['#f28b82', '#fbbc04', '#fff475', '#ccff90', '#a7ffeb', '#cbf0f8', '#aecbfa', '#d7aefb', '#fdcfe8'].map((hex) => (
+                    <button key={hex} type="button" aria-label={hex} onClick={() => patch({ color: hex })} className="h-6 w-6 rounded-full border border-black/10 transition-transform hover:scale-110" style={{ background: hex }} />
+                  ))}
+                </div>
               </div>
             </PopPanel>
           )}
 
           {/* Pengingat */}
           {panel === 'reminder' && (
-            <PopPanel onClose={() => setPanel(null)}>
+            <PopPanel align="right" onClose={() => setPanel(null)}>
               <button type="button" className="block w-full px-3 py-2.5 text-left text-[13px] hover:bg-black/5 dark:hover:bg-white/10" onClick={() => { patch({ dueDate: null }); setPanel(null) }}>
                 {t('task.reminderNone')}
               </button>
@@ -565,7 +846,7 @@ export function TaskNoteModal({
 
           {/* Kolaborator: pilih sesama pengguna aplikasi */}
           {panel === 'collab' && (
-            <PopPanel wide onClose={() => setPanel(null)}>
+            <PopPanel wide align="right" onClose={() => setPanel(null)}>
               {locationLabel && (
                 <p className="border-b border-black/5 px-3 py-2 text-[11px] text-ink-faint dark:border-white/10">
                   {locationLabel}
@@ -598,14 +879,19 @@ export function TaskNoteModal({
 
           {/* Menu lainnya */}
           {panel === 'more' && (
-            <PopPanel onClose={() => setPanel(null)}>
-              {onArchive && (
-                <button type="button" className="block w-full px-3 py-2.5 text-left text-[13px] hover:bg-black/5 dark:hover:bg-white/10" onClick={() => { patch({ archived: true }); onArchive(); setPanel(null); onClose() }}>
+            <PopPanel align="right" onClose={() => setPanel(null)}>
+              {onArchive && !draft.archived && (
+                <button type="button" className="block w-full px-3 py-2.5 text-left text-[13px] hover:bg-black/5 dark:hover:bg-white/10" onClick={() => { patch({ archived: true }); onArchive(); setPanel(null); requestClose() }}>
                   {t('task.archiveFromEditor')}
                 </button>
               )}
+              {onArchive && draft.archived && (
+                <button type="button" className="block w-full px-3 py-2.5 text-left text-[13px] hover:bg-black/5 dark:hover:bg-white/10" onClick={() => { patch({ archived: false }); onArchive(); setPanel(null) }}>
+                  {t('task.unarchive')}
+                </button>
+              )}
               {onDelete && (
-                <button type="button" className="block w-full px-3 py-2.5 text-left text-[13px] text-danger hover:bg-danger/10" onClick={() => { setPanel(null); onClose(); onDelete() }}>
+                <button type="button" className="block w-full px-3 py-2.5 text-left text-[13px] text-danger hover:bg-danger/10" onClick={() => { setPanel(null); requestClose(); onDelete() }}>
                   {t('task.deleteFromEditor')}
                 </button>
               )}
@@ -634,7 +920,7 @@ export function TaskNoteModal({
             type="button"
             title="Stabilo"
             onMouseDown={keepFocus}
-            onClick={() => applyHighlight(HIGHLIGHT_COLORS[3])}
+            onClick={() => applyHighlight(HIGHLIGHT_COLORS[3], true)}
             className="grid h-9 w-9 place-items-center rounded-full text-ink-soft transition-colors hover:bg-black/5 dark:hover:bg-white/10"
           >
             <span className="grid h-[18px] w-[18px] place-items-center rounded-[4px] bg-[#fff173] text-[10px] font-extrabold text-[#7a6400]">S</span>
@@ -648,7 +934,7 @@ export function TaskNoteModal({
           <button type="button" title="Collaborator" className={toolBtn(panel === 'collab')} onClick={() => setPanel(panel === 'collab' ? null : 'collab')}>
             <PersonAddIconSmall />
           </button>
-          <button type="button" title="Image" className={toolBtn(false)} onClick={() => fileRef.current?.click()}>
+          <button type="button" title="Image" className={toolBtn(false)} onClick={pickImage}>
             <ImageIcon className="h-[18px] w-[18px]" />
           </button>
           <input
@@ -662,7 +948,7 @@ export function TaskNoteModal({
               e.target.value = ''
             }}
           />
-          <button type="button" title="Checkbox" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { restoreSelection(); document.execCommand('insertUnorderedList'); emitBody() }}>
+          <button type="button" title="Checkbox" onMouseDown={keepFocus} className={toolBtn(false)} onClick={insertCheckbox}>
             <CheckboxIcon className="h-[18px] w-[18px]" />
           </button>
           <button type="button" title={t('task.more')} className={toolBtn(panel === 'more')} onClick={() => setPanel(panel === 'more' ? null : 'more')}>
@@ -675,7 +961,7 @@ export function TaskNoteModal({
           <button type="button" title="Redo" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { document.execCommand('redo'); emitBody() }}>
             <RedoIcon className="h-[18px] w-[18px]" />
           </button>
-          <GlassButton variant="ghost" size="sm" className="ml-auto" onClick={onClose}>
+          <GlassButton variant="ghost" size="sm" className="ml-auto" onClick={requestClose}>
             {t('common.close')}
           </GlassButton>
         </div>
@@ -704,21 +990,40 @@ export function TaskNoteModal({
     >
       <div
         className={floating ? 'hidden' : 'absolute inset-0 bg-black/45 backdrop-blur-sm'}
-        onClick={floating ? undefined : onClose}
+        onClick={floating ? undefined : requestClose}
         aria-hidden="true"
       />
       <div className={floating ? '' : 'relative z-10 flex w-full justify-center'}>{dialog}</div>
     </div>,
-    document.body,
+    portalContainer ?? document.body,
   )
 }
 
-/** Panel kecil melayang di atas toolbar (palet / pengingat / menu). */
-function PopPanel({ children, onClose, wide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+/** Panel kecil melayang di atas toolbar (palet / pengingat / menu).
+ *  Melekat ke SISI TOMBOL pemicunya supaya tidak menutupi toolbar lain dan
+ *  tidak keluar layar di viewport sempit. */
+function PopPanel({
+  children, onClose, wide = false, align = 'left',
+}: {
+  children: React.ReactNode
+  onClose: () => void
+  wide?: boolean
+  /** left = panel sejajar tepi kiri toolbar; right = menempel tepi kanan. */
+  align?: 'left' | 'right'
+}) {
   return (
     <>
       <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden="true" />
-      <div className={cx('absolute bottom-14 left-2 z-30 rounded-2xl border border-black/10 bg-white py-1 shadow-2xl dark:border-white/15 dark:bg-[#2a2d36]', wide ? 'w-[300px]' : 'min-w-56')}>
+      <div
+        className={cx(
+          'absolute bottom-14 z-30 rounded-2xl border border-black/10 bg-white py-1 shadow-2xl dark:border-white/15 dark:bg-[#2a2d36]',
+          align === 'left' ? 'left-2' : 'right-2',
+          // Lebar adaptif: muat penuh di layar sempit, pas isi di layar lebar.
+          wide
+            ? 'w-[min(300px,calc(100vw-6rem))] max-w-[calc(100vw-6rem)]'
+            : 'w-56 max-w-[calc(100vw-6rem)]',
+        )}
+      >
         {children}
       </div>
     </>
@@ -744,8 +1049,31 @@ function CheckIconSmall() {
   )
 }
 
+/** Ikon "tampil di atas aplikasi lain" (picture-in-picture). */
+function PipIconSmall() {
+  return (
+    <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2.5" y="4.5" width="19" height="15" rx="2.5" />
+      <rect x="12" y="11.5" width="7.5" height="5" rx="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 function isEmptyHtml(html: string): boolean {
   const el = document.createElement('div')
   el.innerHTML = html
   return (el.textContent ?? '').trim() === '' && !el.querySelector('img')
+}
+
+/** Samakan bentuk warna (#fff173 vs rgb(255, 241, 115)) untuk pembanding. */
+function normColor(c: string): string {
+  const s = (c ?? '').trim().toLowerCase()
+  if (s.startsWith('#')) {
+    const hex = s.slice(1)
+    const full = hex.length === 3 ? hex.split('').map((ch) => ch + ch).join('') : hex.slice(0, 6)
+    return `#${full}`
+  }
+  const m = s.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/)
+  if (m) return `#${[m[1], m[2], m[3]].map((x) => Number(x).toString(16).padStart(2, '0')).join('')}`
+  return s
 }

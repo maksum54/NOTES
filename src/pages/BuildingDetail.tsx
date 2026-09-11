@@ -11,7 +11,7 @@ import { ConfirmDialog, Modal } from '@/components/glass/Modal'
 import { Segmented } from '@/components/glass/Segmented'
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
-  ChevronLeft, ChevronRight, ClockIcon, ImageIcon,
+  ArchiveIcon, ChevronLeft, ChevronRight, ClockIcon, ImageIcon,
   LinkIcon, PlusIcon, SparkIcon, TaskIcon,
 } from '@/components/icons'
 import { daysUntil, formatDate } from '@/lib/utils'
@@ -174,9 +174,14 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
   const { toggleTask, updateTask } = useData()
   const [page, setPage] = useState(0)
   const [editing, setEditing] = useState<TaskRow | null>(null)
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const [showArchived, setShowArchived] = useState(false)
+  /* Task terarsip dipisah dari daftar aktif. */
+  const active = rows.filter((r) => !r.task.archived)
+  const archived = rows.filter((r) => r.task.archived)
+  const shown = showArchived ? archived : active
+  const pageCount = Math.max(1, Math.ceil(shown.length / PAGE_SIZE))
   const safePage = Math.min(page, pageCount - 1)
-  const visible = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+  const visible = shown.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
   const modalRow: TaskRow | null = editing
     ? { project: editing.project, building: editing.building, task: rows.find((r) => r.task.id === editing.task.id)?.task ?? editing.task }
@@ -189,7 +194,7 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
         <h2 className="flex-1 text-[15px] font-bold text-ink">{t('building.tasks')}</h2>
 
         {/* Slider: muncul hanya kalau task lebih dari 5. */}
-        {rows.length > PAGE_SIZE && (
+        {shown.length > PAGE_SIZE && (
           <div className="flex items-center gap-1">
             <GlassButton
               variant="ghost"
@@ -217,13 +222,25 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
           </div>
         )}
         <Badge tone="warn">{rows.filter((r) => r.task.status === 'belum' && !r.task.archived).length}</Badge>
+        {archived.length > 0 && (
+          <GlassButton
+            variant={showArchived ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => { setShowArchived((v) => !v); setPage(0) }}
+            icon={<ArchiveIcon className="h-4 w-4" />}
+          >
+            {t('task.archivedSection')} ({archived.length})
+          </GlassButton>
+        )}
         <GlassButton variant="primary" size="sm" onClick={onNew} icon={<PlusIcon className="h-4 w-4" />}>
           {t('building.newTask')}
         </GlassButton>
       </div>
 
-      {rows.length === 0 ? (
-        <p className="py-8 text-center text-[13px] text-ink-faint">{t('building.noTasks')}</p>
+      {shown.length === 0 ? (
+        <p className="py-8 text-center text-[13px] text-ink-faint">
+          {showArchived ? t('task.archivedEmpty') : t('building.noTasks')}
+        </p>
       ) : (
         <>
           {/* Masonry ala Keep: kartu mengalir antar kolom. */}
@@ -309,6 +326,7 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
             })
           }
           onClose={() => setEditing(null)}
+          onPinned={() => setEditing(null)}
           onArchive={() => {}}
           onDelete={() => onDelete(modalRow.task)}
         />

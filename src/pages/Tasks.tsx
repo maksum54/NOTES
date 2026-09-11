@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import { Badge, GlassButton, GlassCard } from '@/components/glass/Glass'
 import { NoteCard } from '@/components/NoteCard'
-import { TaskNoteModal, type PopupBounds, type TaskNoteDraft } from '@/components/TaskNoteModal'
+import { TaskNoteModal, type TaskNoteDraft } from '@/components/TaskNoteModal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ArchiveIcon, CheckIcon, ClockIcon, TaskIcon } from '@/components/icons'
 import { cx, daysUntil, formatDate, formatDateTime } from '@/lib/utils'
-import { readRaw } from '@/lib/storage'
 import type { Building, Project, Task } from '@/types'
 
 /** Jumlah kartu yang tampil per "halaman" slider. */
@@ -31,35 +30,9 @@ export function TasksPage() {
   const { data, updateTask, toggleTask } = useData()
 
   const [editing, setEditing] = useState<TaskRow | null>(null)
-  const [restoredBounds, setRestoredBounds] = useState<PopupBounds | null>(null)
 
-  /* Pulihkan popup pinned setelah reload: popup yang tertinggal terbuka
-     muncul lagi di posisi & ukuran yang sama. */
-  useEffect(() => {
-    const raw = readRaw('pinnedPopup')
-    if (!raw) return
-    try {
-      const saved = JSON.parse(raw) as { key?: string; pos?: { x: number; y: number }; width?: number; height?: number }
-      if (!saved.key?.startsWith('task:')) return
-      const taskId = saved.key.slice(5)
-      for (const project of data.projects) {
-        for (const building of project.buildings) {
-          const task = building.tasks.find((x) => x.id === taskId)
-          if (task) {
-            setEditing({ project, building, task })
-            setRestoredBounds({ pos: saved.pos, width: saved.width, height: saved.height })
-            return
-          }
-        }
-      }
-      // Task-nya tidak ada lagi — bersihkan jejak popup.
-      localStorage.removeItem('notes.pinnedPopup')
-    } catch {
-      /* data korup — abaikan */
-    }
-    // Sengaja sekali per mount: data.project sengaja tidak di-depend.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  /* Popup pinned dipulihkan & dirawat PinnedPopupHost di level App —
+     halaman ini cukup membuka modal biasa saat kartu diklik. */
 
   const groups = useMemo(() => {
     const pinned: TaskRow[] = []
@@ -180,12 +153,9 @@ export function TasksPage() {
           editedAt={modalRow.task.updatedAt}
           locationLabel={`${modalRow.project.name} · ${modalRow.building.name}`}
           persistKey={`task:${modalRow.task.id}`}
-          initialBounds={restoredBounds ?? undefined}
           onChange={(draft) => saveEdit(modalRow, draft)}
-          onClose={() => {
-            setEditing(null)
-            setRestoredBounds(null)
-          }}
+          onClose={() => setEditing(null)}
+          onPinned={() => setEditing(null)}
           onArchive={() => {}}
           onDelete={() => {}}
         />

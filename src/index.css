@@ -380,6 +380,67 @@
     padding: 0.08em 0.15em;
     color: inherit;
   }
+  /* Gambar di editor: maks lebar area, sudut membulat, jangan diregangkan. */
+  .rich-editor img {
+    max-width: 100%;
+    max-height: 420px;
+    border-radius: 10px;
+    display: block;
+    margin: 6px 0;
+  }
+  /* Checklist ala Keep di editor: bullet diganti kotak centang yang bisa
+     diklik langsung (handler klik ada di TaskNoteModal). */
+  .rich-editor ul[data-checklist] {
+    list-style: none;
+    padding-left: 0.25rem;
+    margin: 0.15em 0;
+  }
+  .rich-editor ul[data-checklist] li[data-check] {
+    position: relative;
+    padding-left: 1.6em;
+    min-height: 1.6em;
+    line-height: 1.6;
+  }
+  .rich-editor ul[data-checklist] li[data-check]::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.32em;
+    width: 1em;
+    height: 1em;
+    border: 1.6px solid rgb(var(--ink) / 0.55);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .rich-editor ul[data-checklist] li[data-check='true']::before {
+    background: rgb(var(--accent)) ;
+    border-color: rgb(var(--accent));
+  }
+  .rich-editor ul[data-checklist] li[data-check='true']::after {
+    content: '';
+    position: absolute;
+    left: 0.22em;
+    top: 0.52em;
+    width: 0.55em;
+    height: 0.28em;
+    border-left: 2px solid white;
+    border-bottom: 2px solid white;
+    transform: rotate(-45deg);
+    pointer-events: none;
+  }
+  .rich-editor ul[data-checklist] li[data-check='true'] {
+    text-decoration: line-through;
+    opacity: 0.65;
+  }
+  /* Checklist di kartu (render bergaris): kotaknya teks, nonaktif. */
+  .lined-html .lined-check {
+    font-size: 1.05em;
+    line-height: 1;
+  }
+  .lined-html .lined-check-on {
+    color: rgb(var(--accent));
+  }
 }
 
 @layer utilities {
