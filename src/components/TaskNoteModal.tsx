@@ -236,12 +236,9 @@ export function TaskNoteModal({
     if (touched.length > 0) emitBody()
   }
 
-  /** Stabilo (marker) area teks terseleksi — beda dari warna latar kartu.
-   *  Dipanggil lagi pada teks yang sudah distabilo → stabilo hilang (toggle).
-   *  Berlaku juga untuk seleksi yang menyentuh beberapa stabilo sekaligus,
-   *  walau warnanya berbeda (mis. satu baris pink, satu baris ungu).
-   *  Seleksi kolaps (kursor di dalam stabilo, tanpa blok teks) pada tombol
-   *  stabilo juga menghapus stabilo di posisi kursor. */
+  /** Warna stabilo terakhir yang dipilih dari palet — tombol stabilo
+   *  memakainya untuk seleksi berikutnya tanpa buka palet lagi. */
+  const [lastHighlight, setLastHighlight] = useState<string>(HIGHLIGHT_COLORS[0])
   const applyHighlight = (hex: string, toggleOffAny = false) => {
     restoreSelection()
     const sel = window.getSelection()
@@ -282,6 +279,7 @@ export function TaskNoteModal({
         if (!sel.isCollapsed) return
         return
       }
+
 
       if (!sel.isCollapsed) {
         const probe = document.createElement('div')
@@ -335,6 +333,8 @@ export function TaskNoteModal({
     document.execCommand('styleWithCSS', false, 'false')
     const ok = document.execCommand('hiliteColor', false, hex)
     if (!ok) document.execCommand('backColor', false, hex)
+    // Ingat warna ini — tombol stabilo memakainya untuk blok berikutnya.
+    setLastHighlight(hex)
     refreshFormat()
     emitBody()
   }
@@ -763,7 +763,10 @@ export function TaskNoteModal({
         </div>
 
         {/* ---------- toolbar bawah ---------- */}
-        <div className="relative flex flex-wrap items-center gap-0.5 px-3 pb-2 pt-1 safe-bottom">
+        {/* Di layar sempit toolbar jadi 2 baris: baris tombol bisa digeser
+            horizontal (no-scrollbar), tombol Tutup tetap terlihat di ujung. */}
+        <div className="relative flex items-end gap-0.5 px-3 pb-2 pt-1 safe-bottom">
+          <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
           {/* Palet warna: warna teks + stabilo + latar kartu */}
           {panel === 'palette' && (
             <PopPanel wide align="right" onClose={() => setPanel(null)}>
@@ -920,10 +923,15 @@ export function TaskNoteModal({
             type="button"
             title="Stabilo"
             onMouseDown={keepFocus}
-            onClick={() => applyHighlight(HIGHLIGHT_COLORS[3], true)}
+            onClick={() => applyHighlight(lastHighlight, true)}
             className="grid h-9 w-9 place-items-center rounded-full text-ink-soft transition-colors hover:bg-black/5 dark:hover:bg-white/10"
           >
-            <span className="grid h-[18px] w-[18px] place-items-center rounded-[4px] bg-[#fff173] text-[10px] font-extrabold text-[#7a6400]">S</span>
+            <span
+              className="grid h-[18px] w-[18px] place-items-center rounded-[4px] text-[10px] font-extrabold text-[#7a6400]"
+              style={{ background: lastHighlight }}
+            >
+              S
+            </span>
           </button>
           <button type="button" title="Palette" className={toolBtn(panel === 'palette')} onClick={() => setPanel(panel === 'palette' ? null : 'palette')}>
             <PaletteIcon className="h-[18px] w-[18px]" />
@@ -961,7 +969,9 @@ export function TaskNoteModal({
           <button type="button" title="Redo" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { document.execCommand('redo'); emitBody() }}>
             <RedoIcon className="h-[18px] w-[18px]" />
           </button>
-          <GlassButton variant="ghost" size="sm" className="ml-auto" onClick={requestClose}>
+          </div>
+          {/* Tutup di luar area scroll — selalu terlihat tanpa menggeser toolbar. */}
+          <GlassButton variant="ghost" size="sm" className="ml-auto shrink-0" onClick={requestClose}>
             {t('common.close')}
           </GlassButton>
         </div>
