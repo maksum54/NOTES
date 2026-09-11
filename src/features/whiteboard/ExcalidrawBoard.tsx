@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Excalidraw } from '@excalidraw/excalidraw'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types'
 import type { BinaryFiles, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types'
 import { useLang } from '@/context/LangContext'
+import { cx } from '@/lib/utils'
 import { ExpandIcon, XIcon } from '@/components/icons'
 import type { CanvasScene } from '@/types'
 
@@ -67,10 +67,11 @@ function CanvasInstance({
  * `fullScreen` adalah overlay app-level: menutup seluruh halaman dan
  * HANYA bisa ditutup lewat tombol Tutup (Esc diabaikan sengaja).
  *
- * KUNCI ANTI-HILANG: editor Excalidraw hanya dibuat SEKALI. Saat full
- * screen, NODE DOM pembungkusnya dipindah (appendChild) ke overlay —
- * elemen DOM yang sama, komponen React yang sama — sehingga scene yang
- * sudah digambar tidak pernah dibuang, di mode mana pun.
+ * KUNCI ANTI-HILANG: editor Excalidraw hanya dibuat SEKALI dan NODE-nya
+ * TIDAK PERNAH DIPINDAH. Full screen murni perubahan class/posisi CSS —
+ * wrapper yang sama naik jadi fixed inset-0 menutupi layar, lalu turun
+ * lagi. Karena tidak ada remount ataupun appendChild, scene yang sudah
+ * digambar mustahil hilang, di mode mana pun.
  */
 export function ExcalidrawCanvas({
   scene,
@@ -85,12 +86,6 @@ export function ExcalidrawCanvas({
   const [isFull, setIsFull] = useState(false)
   const saveRef = useRef(onSave)
   saveRef.current = onSave
-
-  /* Node DOM yang menampung editor — dipindah-pindah antara host inline
-     dan host fullscreen lewat appendChild (bukan remount React). */
-  const canvasHolderRef = useRef<HTMLDivElement | null>(null)
-  const inlineHostRef = useRef<HTMLDivElement | null>(null)
-  const fullHostRef = useRef<HTMLDivElement | null>(null)
 
   const handleChange = useCallback(
     (els: readonly ExcalidrawElement[], _: unknown, fs: BinaryFiles) => {
@@ -137,14 +132,15 @@ export function ExcalidrawCanvas({
     return () => document.removeEventListener('keydown', stop, true)
   }, [isFull])
 
-  /* Pindahkan holder (berisi editor) ke host fullscreen saat masuk, dan
-     kembali ke host inline saat keluar. Isi DOM tidak disentuh sama sekali,
-     jadi semua gambar & state Excalidraw tetap utuh. */
+  /* Saat full screen, halaman di belakang disembunyikan dari pembaca
+     layar & interaksi; canvas menutup semuanya secara visual. */
   useEffect(() => {
-    const holder = canvasHolderRef.current
-    if (!holder) return
-    const host = isFull ? fullHostRef.current : inlineHostRef.current
-    if (host && holder.parentElement !== host) host.appendChild(holder)
+    if (!isFull) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
   }, [isFull])
 
   /* Tombol full screen DI DALAM Excalidraw (slot top-right) — ikut pindah
@@ -165,20 +161,22 @@ export function ExcalidrawCanvas({
   )
 
   return (
-    <div className="relative">
-      {/* ---------- host inline: rumah normal editor ---------- */}
+    <div className={cx(isFull && 'contents')}>
+      {/* ---------- editor: SATU instance, wrapper-nya berubah posisi ---------- */}
       <div
-        ref={inlineHostRef}
-        className="overflow-hidden rounded-2xl border hairline"
-        style={{ height: '68dvh' }}
-      />
+        role={isFull ? 'dialog' : undefined}
+        aria-modal={isFull || undefined}
+        className={cx(
+          'flex flex-col overflow-hidden bg-white',
+          isFull
+            ? 'fixed inset-0 z-[120] rounded-none'
+            : 'relative h-[68dvh] rounded-2xl border hairline',
+        )}
+      >
+        <CanvasInstance onReady={handleReady} onChange={handleChange} renderTopRightUI={renderTopRightUI} />
 
-      {/* ---------- FULL SCREEN: overlay seluruh halaman ---------- */}
-      {isFull && (
-        <div className="fixed inset-0 z-[120] bg-white" role="dialog" aria-modal="true">
-          {/* Host fullscreen: holder editor dipindah ke sini via appendChild. */}
-          <div ref={fullHostRef} className="absolute inset-0" />
-          {/* Tombol Tutup — satu-satunya cara keluar mode full screen. */}
+        {/* Tombol Tutup — satu-satunya cara keluar mode full screen. */}
+        {isFull && (
           <button
             type="button"
             onClick={() => setIsFull(false)}
@@ -187,25 +185,8 @@ export function ExcalidrawCanvas({
             <XIcon className="h-4 w-4" />
             {t('common.close')}
           </button>
-        </div>
-      )}
-
-      {/* ---------- editor: dirender SEKALI, hidup di holder yang pindah-pindah ---------- */}
-      {createPortal(
-        <div
-          ref={(el) => {
-            canvasHolderRef.current = el
-            // Mount pertama: taruh di host inline.
-            if (el && inlineHostRef.current && el.parentElement !== inlineHostRef.current) {
-              inlineHostRef.current.appendChild(el)
-            }
-          }}
-          className="h-full w-full"
-        >
-          <CanvasInstance onReady={handleReady} onChange={handleChange} renderTopRightUI={renderTopRightUI} />
-        </div>,
-        document.body,
-      )}
+        )}
+      </div>
     </div>
   )
 }
