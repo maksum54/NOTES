@@ -322,6 +322,9 @@ export const id = {
     imageHint: 'Gambar dipakai sekali untuk pertanyaan ini dan tidak disimpan.',
     imageFailed: 'Gambar gagal dibaca: {msg}',
     imageDefaultAsk: 'Jelaskan isi gambar ini.',
+    fileReady: 'File siap diunduh',
+    fileDownload: 'Unduh',
+    filePreparing: 'Menyiapkan file…',
   },
   settings: {
     title: 'Pengaturan',

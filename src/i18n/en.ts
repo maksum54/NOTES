@@ -324,6 +324,9 @@ export const en: Dict = {
     imageHint: 'The image is used once for this question and is not saved.',
     imageFailed: 'Could not read the image: {msg}',
     imageDefaultAsk: 'Explain what is in this image.',
+    fileReady: 'File ready to download',
+    fileDownload: 'Download',
+    filePreparing: 'Preparing file…',
   },
   settings: {
     title: 'Settings',

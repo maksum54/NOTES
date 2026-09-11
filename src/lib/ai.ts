@@ -463,8 +463,51 @@ export function assistantSystemPrompt(args: {
     'Kalau tidak yakin, katakan tidak yakin — jangan mengarang nomor klausul.',
     args.lang === 'id' ? 'Jawab dalam Bahasa Indonesia.' : 'Answer in English.',
     '',
+    ...FILE_CAPABILITY_LINES(args.lang),
+    '',
     'CATATAN STANDARD MILIK USER (acuan utama):',
     buildStandardsContext(args.standards),
     args.extraContext ? `\nKONTEKS TAMBAHAN:\n${args.extraContext}` : '',
   ].join('\n')
 }
+
+/* ---------- Kemampuan bikin file (Excel/CSV/teks) ---------- */
+
+/**
+ * Instruksi format :::file untuk sistem prompt. Aplikasi menangkap blok ini
+ * di jawaban model lalu mengubahnya jadi file asli yang bisa diunduh user.
+ */
+const FILE_CAPABILITY_LINES = (lang: 'id' | 'en'): string[] =>
+  lang === 'id'
+    ? [
+        'KAMU BISA MEMBUAT FILE yang bisa diunduh user (Excel .xlsx, CSV, TXT, Markdown).',
+        'Kalau user meminta file/lampiran/tabel Excel, tulis penjelasan singkat dulu, lalu akhiri jawaban dengan SATU blok berformat persis (JANGAN dibungkus markdown fence):',
+        '',
+        ':::file',
+        '{"filename":"nama-file.xlsx","sheets":[{"name":"Sheet1","rows":[["A1","B1"],["A2","B2"]]}]}',
+        ':::',
+        '',
+        'Aturan blok :::file:',
+        '- JSON valid dalam SATU baris atau beberapa baris, dibuka :::file dan ditutup :::.',
+        '- "sheets" untuk Excel: tiap sheet punya "name" dan "rows" (array 2D; baris pertama = header).',
+        '- Rumus Excel: tulis string berawalan "=" , contoh "=B3*B4*B5" — otomatis jadi rumus sungguhan.',
+        '- CSV/TXT/Markdown/JSON: pakai {"filename":"data.csv","type":"text","text":"isi file"} alih-alih "sheets".',
+        '- Jangan menuliskan isi tabel panjang dua kali: ringkas di teks jawaban, rincian lengkapnya taruh di dalam blok.',
+        '- Maksimal satu blok :::file per jawaban.',
+      ]
+    : [
+        'YOU CAN CREATE downloadable files (Excel .xlsx, CSV, TXT, Markdown).',
+        'When the user asks for a file/attachment/Excel sheet, write a short explanation first, then END the answer with exactly ONE block (do NOT wrap it in a markdown fence):',
+        '',
+        ':::file',
+        '{"filename":"file-name.xlsx","sheets":[{"name":"Sheet1","rows":[["A1","B1"],["A2","B2"]]}]}',
+        ':::',
+        '',
+        'Rules for the :::file block:',
+        '- Valid JSON, opened with :::file and closed with :::.',
+        '- "sheets" for Excel: each sheet has "name" and "rows" (2D array; first row = header).',
+        '- Excel formulas: write strings starting with "=", e.g. "=B3*B4*B5" — they become real formulas.',
+        '- CSV/TXT/Markdown/JSON: use {"filename":"data.csv","type":"text","text":"file content"} instead of "sheets".',
+        '- Do not duplicate long tables in the prose: summarize in the text, put the full detail in the block.',
+        '- At most one :::file block per answer.',
+      ]

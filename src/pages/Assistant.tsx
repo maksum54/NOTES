@@ -5,8 +5,11 @@ import { useLang } from '@/context/LangContext'
 import { EmptyState, GlassButton, GlassCard, GlassInput, Spinner } from '@/components/glass/Glass'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ChatBubble } from './TaskDetail'
-import { CameraIcon, PaperclipIcon, SendIcon, SparkIcon, TrashIcon, XIcon } from '@/components/icons'
+import {
+  CameraIcon, DownloadIcon, ExcelIcon, FileIcon, PaperclipIcon, SendIcon, SparkIcon, TrashIcon, XIcon,
+} from '@/components/icons'
 import { assistantSystemPrompt, buildUserContent, chatStream, isAiReady } from '@/lib/ai'
+import { downloadAiFile, estimateAiFileSize, extractFileBlocks, stripIncompleteBlock } from '@/lib/aiFile'
 import { readJSON, writeJSON } from '@/lib/storage'
 import { compressImage, nowISO, uid } from '@/lib/utils'
 import type { ChatMessage } from '@/types'
@@ -205,7 +208,12 @@ export function AssistantPage() {
           ) : (
             <ul className="space-y-2.5">
               {visible.map((m) => (
-                <ChatBubble key={m.id} message={m} images={sentImages[m.id]} />
+                <AssistantBubble
+                  key={m.id}
+                  message={m}
+                  images={sentImages[m.id]}
+                  streaming={m.id === '__streaming'}
+                />
               ))}
             </ul>
           )}
@@ -337,5 +345,79 @@ export function AssistantPage() {
         </form>
       </GlassCard>
     </>
+  )
+}
+
+/**
+ * Bubble jawaban assistant yang sadar blok :::file — JSON pembentuk file
+ * disembunyikan dari tampilan dan diganti kartu unduh.
+ */
+function AssistantBubble({
+  message,
+  images = [],
+  streaming,
+}: {
+  message: ChatMessage
+  images?: string[]
+  streaming?: boolean
+}) {
+  const { t } = useLang()
+  if (message.role === 'user') {
+    return <ChatBubble message={message} images={images} />
+  }
+
+  // Saat streaming, blok yang belum selesai ditulis disembunyikan supaya
+  // JSON-nya tidak mengalir di layar; parsing menunggu blok utuh.
+  const raw = streaming ? stripIncompleteBlock(message.content).text : message.content
+  const { text, files } = extractFileBlocks(raw)
+  const showBubble = text.trim().length > 0
+
+  return (
+    <>
+      {showBubble && <ChatBubble message={{ ...message, content: text }} images={images} />}
+      {files.map((file) => (
+        <FileCard key={file.filename} file={file} />
+      ))}
+      {streaming && !showBubble && files.length === 0 && (
+        <li className="flex items-center gap-2 text-[13px] text-ink-faint">{t('assistant.filePreparing')}</li>
+      )}
+    </>
+  )
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** Kartu file hasil AI — klik untuk membuat & mengunduh file aslinya. */
+function FileCard({ file }: { file: import('@/lib/aiFile').AiFile }) {
+  const { t } = useLang()
+  const isSheet = file.kind === 'xlsx'
+  const Icon = isSheet || /\.csv$/i.test(file.filename) ? ExcelIcon : FileIcon
+  return (
+    <li className="flex justify-start">
+      <div className="glass flex max-w-[85%] items-center gap-3 rounded-2xl px-3.5 py-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-accent/15 text-accent">
+          <Icon className="h-5 w-5" />
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-bold text-ink">{file.filename}</span>
+          <span className="block truncate text-[11px] text-ink-faint">
+            {t('assistant.fileReady')} · {formatSize(estimateAiFileSize(file))}
+          </span>
+        </span>
+        <GlassButton
+          variant="primary"
+          size="sm"
+          className="shrink-0"
+          icon={<DownloadIcon className="h-4 w-4" />}
+          onClick={() => downloadAiFile(file)}
+        >
+          {t('assistant.fileDownload')}
+        </GlassButton>
+      </div>
+    </li>
   )
 }
