@@ -9,7 +9,7 @@ import { Segmented } from '@/components/glass/Segmented'
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
   CloudIcon, DownloadIcon, GearIcon, GlobeIcon, LogoutIcon, MonitorIcon,
-  MoonIcon, SparkIcon, SunIcon, TrashIcon, UploadIcon,
+  MoonIcon, RefreshIcon, SparkIcon, SunIcon, TrashIcon, UploadIcon,
 } from '@/components/icons'
 import { AI_DEFAULTS, getAiConfig, normalizeBaseUrl, setAiConfig, testConnection } from '@/lib/ai'
 import {
@@ -27,7 +27,7 @@ export function SettingsPage() {
   const { t, lang, setLang } = useLang()
   const { theme, setTheme } = useTheme()
   const { account, signOut } = useAuth()
-  const { data, replaceAll, resetAll } = useData()
+  const { data, replaceAll, resetAll, syncNow, syncing, syncError } = useData()
 
   const jsonRef = useRef<HTMLInputElement>(null)
   const [ai, setAi] = useState(getAiConfig)
@@ -37,7 +37,7 @@ export function SettingsPage() {
   const [driveConnected, setDriveConnected] = useState(isDriveConnected)
   const [autoSync, setAutoSyncState] = useState(isAutoSyncOn)
   const [lastSync, setLastSync] = useState(driveLastSync)
-  const [driveBusy, setDriveBusy] = useState<'backup' | 'restore' | 'connect' | null>(null)
+  const [driveBusy, setDriveBusy] = useState<'sync' | 'backup' | 'restore' | 'connect' | null>(null)
   const [driveNotice, setDriveNotice] = useState<Notice>(null)
 
   const [bytes, setBytes] = useState(0)
@@ -98,6 +98,24 @@ export function SettingsPage() {
       await backupToDrive(data)
       setLastSync(driveLastSync())
       setDriveNotice({ tone: 'ok', text: t('settings.driveBackupOk') })
+    } catch (err) {
+      setDriveNotice({
+        tone: 'danger',
+        text: t('settings.testFail', { msg: err instanceof Error ? err.message : 'unknown' }),
+      })
+    } finally {
+      setDriveBusy(null)
+    }
+  }
+
+  /* Sinkron dua-arah: gabungkan data perangkat ini dengan backup Drive. */
+  const doSync = async () => {
+    setDriveBusy('sync')
+    setDriveNotice(null)
+    try {
+      await syncNow()
+      setLastSync(driveLastSync())
+      setDriveNotice({ tone: 'ok', text: t('settings.driveSyncOk') })
     } catch (err) {
       setDriveNotice({
         tone: 'danger',
@@ -269,6 +287,14 @@ export function SettingsPage() {
                   <>
                     <GlassButton
                       variant="primary"
+                      onClick={doSync}
+                      loading={driveBusy === 'sync' || syncing}
+                      icon={driveBusy !== 'sync' && !syncing && <RefreshIcon className="h-4 w-4" />}
+                    >
+                      {driveBusy === 'sync' || syncing ? t('settings.driveSyncing') : t('settings.driveSync')}
+                    </GlassButton>
+                    <GlassButton
+                      variant="glass"
                       onClick={doBackup}
                       loading={driveBusy === 'backup'}
                       icon={driveBusy !== 'backup' && <UploadIcon className="h-4 w-4" />}
@@ -314,6 +340,12 @@ export function SettingsPage() {
               <p className="text-[12px] text-ink-faint">
                 {t('settings.driveLastSync')}: {lastSync ? formatDateTime(lastSync, lang) : t('settings.driveNever')}
               </p>
+
+              {syncError && !driveNotice && (
+                <p className="text-[13px] font-semibold text-danger">
+                  {t('settings.testFail', { msg: syncError })}
+                </p>
+              )}
 
               {driveNotice && (
                 <p className={driveNotice.tone === 'ok' ? 'text-[13px] font-semibold text-ok' : 'text-[13px] font-semibold text-danger'}>

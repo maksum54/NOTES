@@ -178,6 +178,13 @@ export const DownloadIcon = (p: P) => (
   </Base>
 )
 
+export const RefreshIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M20 11a8 8 0 0 0-14.9-3M4 13a8 8 0 0 0 14.9 3" />
+    <path d="M4 4v4h4M20 20v-4h-4" />
+  </Base>
+)
+
 export const ImageIcon = (p: P) => (
   <Base {...p}>
     <rect x="3" y="4.5" width="18" height="15" rx="2.5" />

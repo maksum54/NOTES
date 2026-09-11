@@ -27,7 +27,7 @@ import {
 import { loadData, migrate, saveData } from '@/lib/storage'
 import { daysUntil, nowISO, uid } from '@/lib/utils'
 import { reviewSummary, isAiReady } from '@/lib/ai'
-import { backupToDrive, isAutoSyncOn, isDriveConnected, silentReconnect } from '@/lib/drive'
+import { isAutoSyncOn, isDriveConnected, silentReconnect, syncMergeWithDrive } from '@/lib/drive'
 import { showNotification } from '@/lib/notify'
 import { useLang } from './LangContext'
 import { useAuth } from './AuthContext'
@@ -84,6 +84,8 @@ interface DataValue {
   /* -- bulk -- */
   replaceAll: (data: AppData) => void
   resetAll: () => void
+  /** Sinkron dua-arah dengan Google Drive sekarang (gabung per-item). */
+  syncNow: () => Promise<void>
   syncing: boolean
   syncError: string | null
 }
@@ -181,21 +183,40 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  /* Backup ke Drive di-debounce, jadi ketikan cepat tidak memicu puluhan upload. */
-  useEffect(() => {
-    if (!isAutoSyncOn() || !isDriveConnected()) return
-    if (syncTimer.current) clearTimeout(syncTimer.current)
-    syncTimer.current = setTimeout(() => {
+  /*
+   * Sinkron dua-arah ke Drive, di-debounce: tarik backup, gabungkan dengan
+   * data lokal (per-item, terbaru menang), lalu unggah hasilnya. Jadi edit
+   * di PC dan HP sama-sama selamat, bukan saling menimpa.
+   */
+  const runSync = useCallback(
+    (payload: AppData) => {
       setSyncing(true)
       setSyncError(null)
-      backupToDrive(data)
+      syncMergeWithDrive(payload)
+        .then((merged) => {
+          if (merged) setData((prev) => (prev === merged ? prev : merged))
+        })
         .catch((err: unknown) => setSyncError(err instanceof Error ? err.message : 'sync-failed'))
         .finally(() => setSyncing(false))
-    }, 4000)
+    },
+    [],
+  )
+
+  /* Backup ke Drive di-debounce, jadi ketikan cepat tidak memicu puluhan sync.
+     Lewati mount pertama — penarikan awal ditangani efek pull-on-open di bawah. */
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
+    if (!isAutoSyncOn() || !isDriveConnected()) return
+    if (syncTimer.current) clearTimeout(syncTimer.current)
+    syncTimer.current = setTimeout(() => runSync(data), 4000)
     return () => {
       if (syncTimer.current) clearTimeout(syncTimer.current)
     }
-  }, [data])
+  }, [data, runSync])
 
   /*
    * Auto-reconnect Drive: user yang pernah menyetujui akses Drive tidak
@@ -215,18 +236,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /* Setelah reconnect sukses, jalankan satu backup agar data terbaru langsung naik. */
+  /*
+   * Setelah app dibuka dan Drive tersambung (reconnect senyap ATAU sudah
+   * tersambung dari sesi sebelumnya), tarik sekali: data yang diubah di
+   * perangkat lain langsung muncul tanpa perlu "Pulihkan" manual.
+   * Sedikit ditunda supaya tarikan ini tidak balik memicu efek debounce
+   * di atas dalam tick render yang sama.
+   */
+  const pullOnOpenRef = useRef(false)
   useEffect(() => {
-    if (!reconnectedAt) return
+    if (pullOnOpenRef.current) return
+    if (!reconnectedAt && !isDriveConnected()) return
     if (!isAutoSyncOn()) return
-    setSyncing(true)
-    backupToDrive(data)
-      .then(() => setSyncError(null))
-      .catch((err: unknown) => setSyncError(err instanceof Error ? err.message : 'sync-failed'))
-      .finally(() => setSyncing(false))
-    // Jalankan tepat sekali setiap reconnect sukses (data saat itu).
+    pullOnOpenRef.current = true
+    const t = setTimeout(() => runSync(latest.current), 1000)
+    return () => clearTimeout(t)
+    // Jalankan tepat sekali saat app dibuka dengan Drive siap.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reconnectedAt])
+  }, [reconnectedAt, runSync])
 
   const mutate = useCallback((fn: (prev: AppData) => AppData) => {
     setData((prev) => ({ ...fn(prev), updatedAt: nowISO() }))
@@ -618,6 +645,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const replaceAll = useCallback((next: AppData) => setData(migrate(next)), [])
   const resetAll = useCallback(() => setData(emptyData()), [])
 
+  /**
+   * Tarik backup Drive, gabungkan dengan data lokal, simpan hasilnya.
+   * Promise selesai ketika hasil gabungan sudah dipasang (atau gagal).
+   */
+  const syncNow = useCallback((): Promise<void> => {
+    setSyncing(true)
+    setSyncError(null)
+    return syncMergeWithDrive(latest.current)
+      .then((merged) => {
+        if (merged) setData(merged)
+      })
+      .then(() => undefined)
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'sync-failed'
+        setSyncError(msg)
+        throw err
+      })
+      .finally(() => setSyncing(false))
+  }, [])
+
   const unreadWarnings = useMemo(() => data.warnings.filter((w) => !w.read).length, [data.warnings])
 
   const value = useMemo<DataValue>(
@@ -652,6 +699,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       upsertMember,
       replaceAll,
       resetAll,
+      syncNow,
       syncing,
       syncError,
     }),
@@ -661,7 +709,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addBoard, updateBoard, deleteBoard,
       addStandard, addStandards,
       updateStandard, deleteStandard, pushWarning, markWarningRead, markAllWarningsRead, clearWarnings,
-      unreadWarnings, upsertMember, replaceAll, resetAll, syncing, syncError,
+      unreadWarnings, upsertMember, replaceAll, resetAll, syncNow, syncing, syncError,
     ],
   )
 

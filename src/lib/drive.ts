@@ -1,5 +1,6 @@
 import type { AppData } from '@/types'
 import { readRaw, removeRaw, writeRaw } from './storage'
+import { mergeData } from './merge'
 
 /* ============================================================
    STORAGE GOOGLE DRIVE
@@ -276,6 +277,24 @@ export async function restoreFromDrive(): Promise<AppData | null> {
   const data = (await res.json()) as AppData
   writeRaw('driveLastSync', new Date().toISOString())
   return data
+}
+
+/**
+ * Sinkron dua-arah: tarik backup Drive, GABUNGKAN dengan data lokal
+ * (per-item, terbaru menang — lihat lib/merge), lalu unggah hasilnya.
+ * Aman dipanggil dari dua perangkat: data kedua sisi tetap hidup.
+ * Mengembalikan hasil gabungan; null berarti Drive belum punya backup.
+ */
+export async function syncMergeWithDrive(local: AppData): Promise<AppData | null> {
+  const remote = await restoreFromDrive()
+  if (!remote) {
+    // Belum ada backup: perangkat ini yang memulai — naikkan datanya.
+    await backupToDrive(local)
+    return local
+  }
+  const merged = mergeData(local, remote)
+  await backupToDrive(merged)
+  return merged
 }
 
 /* ============================================================
