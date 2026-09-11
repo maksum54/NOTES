@@ -173,19 +173,44 @@ export function TaskDetailPage() {
 export function canvasElementCount(task: Task): number {
   return task.canvas?.elements.length ?? 0
 }
-export function ChatBubble({ message }: { message: ChatMessage }) {
+/** Berapa gambar yang ditampilkan penuh; sisanya diringkas jadi "+n". */
+const MAX_BUBBLE_IMAGES = 3
+
+export function ChatBubble({ message, images = [] }: { message: ChatMessage; images?: string[] }) {
   const isUser = message.role === 'user'
+  const shown = images.slice(0, MAX_BUBBLE_IMAGES)
+  const extra = images.length - shown.length
   return (
     <li className={cx('flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cx(
-          'max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[13.5px] leading-relaxed',
+          'max-w-[85%] rounded-2xl px-4 py-2.5 text-[13.5px] leading-relaxed',
+          // whitespace-pre-wrap hanya untuk teks; kalau ada gambar, jarak antar
+          // baris diatur elemen di bawah supaya tidak ada celah kosong aneh.
+          images.length === 0 && 'whitespace-pre-wrap',
           isUser
             ? 'bg-accent text-white shadow-[0_4px_14px_-6px_rgb(var(--accent)/0.8)]'
             : 'glass text-ink',
         )}
       >
-        {message.content}
+        {shown.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {shown.map((src, i) => (
+              <img
+                key={i}
+                src={src}
+                alt=""
+                className="h-24 w-24 rounded-xl object-cover ring-1 ring-white/25"
+              />
+            ))}
+            {extra > 0 && (
+              <span className="grid h-24 w-24 place-items-center rounded-xl bg-black/25 text-[13px] font-semibold">
+                +{extra}
+              </span>
+            )}
+          </div>
+        )}
+        {message.content && <span className="whitespace-pre-wrap">{message.content}</span>}
       </div>
     </li>
   )

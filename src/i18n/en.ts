@@ -315,6 +315,13 @@ export const en: Dict = {
     noKey: 'No AI API key set. Open Settings to add one.',
     goSettings: 'Open Settings',
     error: 'Could not reach the AI: {msg}',
+    attach: 'Attach image',
+    camera: 'Take a photo',
+    dropHere: 'Drop the image here',
+    removeImage: 'Remove image',
+    imageHint: 'The image is used once for this question and is not saved.',
+    imageFailed: 'Could not read the image: {msg}',
+    imageDefaultAsk: 'Explain what is in this image.',
   },
   settings: {
     title: 'Settings',

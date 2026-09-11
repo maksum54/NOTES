@@ -313,6 +313,13 @@ export const id = {
     noKey: 'API key AI belum diisi. Buka Pengaturan untuk mengisinya.',
     goSettings: 'Ke Pengaturan',
     error: 'Gagal menghubungi AI: {msg}',
+    attach: 'Lampirkan gambar',
+    camera: 'Ambil dari kamera',
+    dropHere: 'Lepaskan gambar di sini',
+    removeImage: 'Hapus gambar',
+    imageHint: 'Gambar dipakai sekali untuk pertanyaan ini dan tidak disimpan.',
+    imageFailed: 'Gambar gagal dibaca: {msg}',
+    imageDefaultAsk: 'Jelaskan isi gambar ini.',
   },
   settings: {
     title: 'Pengaturan',

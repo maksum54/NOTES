@@ -436,3 +436,16 @@ export const PersonAddIcon = (p: P) => (
     <path d="M19 8v6M16 11h6" />
   </Base>
 )
+
+export const PaperclipIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M20 11.5 12.2 19.3a4.6 4.6 0 0 1-6.5-6.5l7.8-7.8a3 3 0 0 1 4.3 4.3l-7.8 7.8a1.4 1.4 0 0 1-2-2l7.2-7.2" />
+  </Base>
+)
+
+export const CameraIcon = (p: P) => (
+  <Base {...p}>
+    <path d="M3 8.8A1.8 1.8 0 0 1 4.8 7h2.4l1.3-2h7l1.3 2h2.4A1.8 1.8 0 0 1 21 8.8v8.4a1.8 1.8 0 0 1-1.8 1.8H4.8A1.8 1.8 0 0 1 3 17.2Z" />
+    <circle cx="12" cy="13" r="3.4" />
+  </Base>
+)

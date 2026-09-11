@@ -67,9 +67,32 @@ export function isAiReady(): boolean {
 
 export const AI_DEFAULTS = { baseUrl: DEFAULT_BASE_URL, model: DEFAULT_MODEL }
 
+/**
+ * Isi pesan bisa berupa teks biasa atau daftar bagian (teks + gambar).
+ * Bentuk array ini format multimodal [OI] yang dipakai endpoint vikey.ai.
+ */
+export type AiContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 export interface AiMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: string | AiContentPart[]
+}
+
+/**
+ * Susun isi pesan user dari teks + gambar.
+ *
+ * Tanpa gambar, hasilnya tetap string biasa — payload untuk pemakaian yang
+ * sudah ada tidak berubah sama sekali. Gambar ditaruh SEBELUM teks karena
+ * urutan itu yang paling aman di berbagai model vision.
+ */
+export function buildUserContent(text: string, imageDataUrls: string[] = []): string | AiContentPart[] {
+  if (imageDataUrls.length === 0) return text
+  return [
+    ...imageDataUrls.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+    ...(text ? [{ type: 'text' as const, text }] : []),
+  ]
 }
 
 export class AiError extends Error {
@@ -114,7 +137,7 @@ function isReasoningBudgetError(err: unknown): boolean {
 }
 
 interface CompletionChoice {
-  message?: { content?: string }
+  message?: { content?: string | AiContentPart[] }
 }
 interface CompletionResponse {
   choices?: CompletionChoice[]
@@ -163,7 +186,11 @@ async function chatOnce(messages: AiMessage[], opts: ChatOpts, maxTokens: number
     throw new AiError(json.error?.message || `HTTP ${res.status}`, res.status)
   }
 
-  const content = json.choices?.[0]?.message?.content
+  const raw = json.choices?.[0]?.message?.content
+  // Sebagian provider membalas dengan daftar bagian, bukan string tunggal.
+  const content = Array.isArray(raw)
+    ? raw.map((part) => (part.type === 'text' ? part.text : '')).join('')
+    : raw
   if (typeof content !== 'string') throw new AiError('empty-response', res.status)
   opts.onDelta?.(content.trim())
   return content.trim()
@@ -265,8 +292,15 @@ export async function chatStream(messages: AiMessage[], opts: ChatOpts = {}): Pr
         break
       }
       try {
-        const json = JSON.parse(payload) as { choices?: { delta?: { content?: string } }[] }
-        const delta = json.choices?.[0]?.delta?.content
+        const json = JSON.parse(payload) as {
+          choices?: { delta?: { content?: string | AiContentPart[] } }[]
+        }
+        // Sebagian provider mengirim delta sebagai array bagian (teks/gambar);
+        // ambil potongan teksnya saja supaya tidak ikut ter-stringify.
+        const raw = json.choices?.[0]?.delta?.content
+        const delta = Array.isArray(raw)
+          ? raw.map((part) => (part.type === 'text' ? part.text : '')).join('')
+          : raw
         if (typeof delta === 'string' && delta.length > 0) {
           full += delta
           opts.onDelta?.(full)
