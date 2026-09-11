@@ -23,7 +23,7 @@ function apply(resolved: ResolvedTheme): void {
   root.classList.toggle('light', resolved === 'light')
   document
     .querySelector('meta[name="theme-color"]:not([media])')
-    ?.setAttribute('content', resolved === 'dark' ? '#0b1020' : '#eef2fb')
+    ?.setAttribute('content', resolved === 'dark' ? '#08080a' : '#fafafc')
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
