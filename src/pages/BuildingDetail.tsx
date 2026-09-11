@@ -252,6 +252,7 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
                 html={row.task.description}
                 done={row.task.status === 'sudah'}
                 pinned={row.task.pinned}
+                color={row.task.color ?? undefined}
                 meta={
                   <>
                     {row.task.dueDate && (
