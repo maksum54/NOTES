@@ -82,6 +82,37 @@ export class AiError extends Error {
   }
 }
 
+export interface ChatOpts {
+  temperature?: number
+  signal?: AbortSignal
+  maxTokens?: number
+  onDelta?: (full: string) => void
+}
+
+/** Budget token default — aman untuk hampir semua model. */
+const DEFAULT_MAX_TOKENS = 4096
+
+/**
+ * Model "reasoning" (mis. deepseek-v4, o-series) berpikir dulu sebelum menjawab,
+ * dan token untuk berpikir itu IKUT dihitung ke `max_tokens`. Kalau budgetnya
+ * kekecilan, provider membalas error semacam:
+ *
+ *   "The model spent its entire max_tokens budget on reasoning and returned no
+ *    answer. Increase max_tokens ... or disable extended thinking."
+ *
+ * Ini penting dibedakan: koneksi, API key, dan Base URL semuanya BENAR — yang
+ * habis cuma budget token. Jadi error ini ditangkap lalu diulang sekali dengan
+ * budget jauh lebih longgar, bukan diteruskan mentah-mentah ke user.
+ */
+const REASONING_BUDGET_RE = /budget on reasoning|reasoning tokens count|max_tokens budget|extended thinking/i
+
+/** Budget cadangan saat model kehabisan token untuk reasoning. */
+const REASONING_RETRY_MAX_TOKENS = 32768
+
+function isReasoningBudgetError(err: unknown): boolean {
+  return err instanceof AiError && REASONING_BUDGET_RE.test(err.message)
+}
+
 interface CompletionChoice {
   message?: { content?: string }
 }
@@ -90,11 +121,8 @@ interface CompletionResponse {
   error?: { message?: string }
 }
 
-/** Satu panggilan chat completion. */
-export async function chat(
-  messages: AiMessage[],
-  opts: { temperature?: number; signal?: AbortSignal; maxTokens?: number; onDelta?: (full: string) => void } = {},
-): Promise<string> {
+/** Satu panggilan chat completion, tanpa retry. */
+async function chatOnce(messages: AiMessage[], opts: ChatOpts, maxTokens: number): Promise<string> {
   const { apiKey, model, baseUrl } = getAiConfig()
   if (!apiKey) throw new AiError('missing-api-key')
 
@@ -110,7 +138,7 @@ export async function chat(
         model,
         messages,
         temperature: opts.temperature ?? 0.2,
-        max_tokens: opts.maxTokens ?? 4096,
+        max_tokens: maxTokens,
       }),
       signal: opts.signal,
     })
@@ -142,14 +170,34 @@ export async function chat(
 }
 
 /**
+ * Satu panggilan chat completion.
+ *
+ * Kalau model kehabisan budget token untuk reasoning, panggilan diulang sekali
+ * dengan budget yang jauh lebih longgar — supaya model reasoning tetap bisa
+ * dipakai tanpa user harus menaikkan `max_tokens` sendiri.
+ */
+export async function chat(messages: AiMessage[], opts: ChatOpts = {}): Promise<string> {
+  const budget = opts.maxTokens ?? DEFAULT_MAX_TOKENS
+  try {
+    return await chatOnce(messages, opts, budget)
+  } catch (err) {
+    if (!isReasoningBudgetError(err)) throw err
+    try {
+      return await chatOnce(messages, opts, Math.max(budget * 4, REASONING_RETRY_MAX_TOKENS))
+    } catch {
+      // Retry ikut gagal (mis. provider membatasi `max_tokens`) — tampilkan
+      // error aslinya supaya penyebabnya tetap terbaca.
+      throw err
+    }
+  }
+}
+
+/**
  * Chat completion dengan streaming (SSE) — jawaban mulai terlihat jauh lebih
  * cepat karena tiap potongan teks langsung diteruskan lewat `onDelta`.
  * Kalau endpoint tidak mendukung `stream: true`, otomatis jatuh ke `chat()`.
  */
-export async function chatStream(
-  messages: AiMessage[],
-  opts: { temperature?: number; signal?: AbortSignal; maxTokens?: number; onDelta?: (full: string) => void } = {},
-): Promise<string> {
+export async function chatStream(messages: AiMessage[], opts: ChatOpts = {}): Promise<string> {
   const { apiKey, model, baseUrl } = getAiConfig()
   if (!apiKey) throw new AiError('missing-api-key')
 
@@ -165,7 +213,7 @@ export async function chatStream(
         model,
         messages,
         temperature: opts.temperature ?? 0.2,
-        max_tokens: opts.maxTokens ?? 4096,
+        max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
         stream: true,
       }),
       signal: opts.signal,
@@ -176,10 +224,6 @@ export async function chatStream(
   }
 
   if (!res.ok) {
-    // Server menolak parameter stream (atau error lain) -> coba tanpa stream.
-    if (res.status === 400 || res.status === 422) {
-      return chat(messages, { ...opts, onDelta: undefined })
-    }
     const text = await res.text()
     let msg = `HTTP ${res.status}`
     try {
@@ -187,6 +231,11 @@ export async function chatStream(
     } catch { /* biar pakai pesan default */ }
     if (res.status === 404) {
       throw new AiError(`HTTP 404 — endpoint tidak ditemukan. Cek Base URL (harus memuat /v1) dan Model ID.`, 404)
+    }
+    // Parameter stream ditolak, atau model kehabisan budget reasoning -> ulangi
+    // lewat jalur non-stream; retry budgetnya sudah ditangani di `chat()`.
+    if (res.status === 400 || res.status === 422 || REASONING_BUDGET_RE.test(msg)) {
+      return chat(messages, { ...opts, onDelta: undefined })
     }
     throw new AiError(msg, res.status)
   }
@@ -231,9 +280,17 @@ export async function chatStream(
   return full.trim()
 }
 
-/** Ping ringan untuk tombol "Tes Koneksi" di Pengaturan. */
+/**
+ * Ping ringan untuk tombol "Tes Koneksi" di Pengaturan.
+ *
+ * Jangan pernah memakai budget token kecil di sini. Model reasoning bisa
+ * memakai ribuan token hanya untuk berpikir sebelum menulis "OK", jadi angka
+ * seperti 8 membuat tes ini gagal ("spent its entire max_tokens budget on
+ * reasoning") padahal API key dan Base URL-nya sudah benar — dan user pun
+ * mengira koneksinya yang bermasalah.
+ */
 export async function testConnection(): Promise<string> {
-  return chat([{ role: 'user', content: 'Reply with exactly: OK' }], { maxTokens: 8, temperature: 0 })
+  return chat([{ role: 'user', content: 'Reply with exactly: OK' }], { temperature: 0 })
 }
 
 /* ---------- Konteks standard yang disuntikkan ke prompt ---------- */
