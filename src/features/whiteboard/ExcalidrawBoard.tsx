@@ -82,10 +82,24 @@ export function ExcalidrawCanvas({
 }) {
   const { t } = useLang()
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null)
+  const boardRef = useRef<HTMLDivElement>(null)
   const [ready, setReady] = useState(false)
   const [isFull, setIsFull] = useState(false)
   const saveRef = useRef(onSave)
   saveRef.current = onSave
+  // Pengguna pernah menggeser/zoom kanvas sendiri? Kalau sudah, auto-fit
+  // tidak pernah mengusik pandangannya lagi.
+  const userNavigatedRef = useRef(false)
+  const lastSizeRef = useRef<{ w: number; h: number } | null>(null)
+
+  /** Zoom & geser kanvas supaya SELURUH isi gambar terlihat. */
+  const fitToContent = useCallback((animate = false) => {
+    const api = apiRef.current
+    if (!api) return
+    const els = api.getSceneElements()
+    if (!els || els.length === 0) return
+    api.scrollToContent(els, { fitToViewport: true, viewportZoomFactor: 0.85, animate })
+  }, [])
 
   const handleChange = useCallback(
     (els: readonly ExcalidrawElement[], _: unknown, fs: BinaryFiles) => {
@@ -118,9 +132,32 @@ export function ExcalidrawCanvas({
           })) as never,
         )
       }
+      // Gambar tersimpan langsung dipasangkan di layar — tanpa ini kamera
+      // bisa menghadap area kosong dan isi kanvas dianggap "hilang".
+      window.setTimeout(() => fitToContent(), 60)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready])
+
+  // Ukuran kanvas berubah (inline ↔ full screen, jendela di-resize, orientasi
+  // HP) dan pengguna belum pernah navigasi manual: pasangkan ulang seluruh isi
+  // supaya gambar yang sudah ada SELALU terlihat semua di kanvas.
+  useEffect(() => {
+    const el = boardRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect
+      if (!box || box.width === 0 || box.height === 0) return
+      const prev = lastSizeRef.current
+      lastSizeRef.current = { w: box.width, h: box.height }
+      if (!prev) return
+      const dw = Math.abs(box.width - prev.w) / prev.w
+      const dh = Math.abs(box.height - prev.h) / prev.h
+      if ((dw > 0.02 || dh > 0.02) && !userNavigatedRef.current) fitToContent(true)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [fitToContent])
 
   // Esc sengaja DIABAIKAN di mode fullscreen — hanya tombol Tutup yang menutup.
   useEffect(() => {
@@ -164,8 +201,17 @@ export function ExcalidrawCanvas({
     <div className={cx(isFull && 'contents')}>
       {/* ---------- editor: SATU instance, wrapper-nya berubah posisi ---------- */}
       <div
+        ref={boardRef}
         role={isFull ? 'dialog' : undefined}
         aria-modal={isFull || undefined}
+        onPointerDownCapture={(e) => {
+          // Hanya interaksi di permukaan kanvas yang dihitung sebagai navigasi —
+          // klik tombol toolbar (pena, bentuk, dst.) tidak boleh mematikan auto-fit.
+          if ((e.target as HTMLElement).closest('canvas')) userNavigatedRef.current = true
+        }}
+        onWheelCapture={(e) => {
+          if ((e.target as HTMLElement).closest('canvas')) userNavigatedRef.current = true
+        }}
         className={cx(
           'flex flex-col overflow-hidden bg-white',
           isFull
