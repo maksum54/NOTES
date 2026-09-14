@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Excalidraw } from '@excalidraw/excalidraw'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types'
-import type { BinaryFiles, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types'
+import type {
+  BinaryFiles,
+  ExcalidrawImperativeAPI,
+  ExcalidrawInitialDataState,
+} from '@excalidraw/excalidraw/types/types'
 import { useLang } from '@/context/LangContext'
 import { cx } from '@/lib/utils'
 import { ExpandIcon, XIcon } from '@/components/icons'
@@ -30,12 +34,43 @@ function serializeFiles(files: BinaryFiles | null): CanvasScene['files'] {
   )
 }
 
+/**
+ * Scene tersimpan -> `initialData` Excalidraw.
+ *
+ * Excalidraw memasang isi ini SENDIRI di dalam initializeScene()-nya. Itu satu-
+ * satunya cara yang aman: memanggil updateScene() dari luar sesudah mount
+ * kalah balapan dengan initializeScene(), yang menutup dengan
+ * replaceAllElements([]) + isLoading=false — onChange lalu menyimpan kanvas
+ * kosong dan coretan yang tersimpan terhapus.
+ *
+ * `scrollToContent` menggantikan fit-to-content manual: Excalidraw memusatkan
+ * isi tepat setelah scene-nya siap, bukan lewat timer yang bisa keburu.
+ */
+function toInitialData(scene: CanvasScene | null | undefined): ExcalidrawInitialDataState | null {
+  if (!scene) return null
+  // `mimeType` disimpan sebagai string bebas; Excalidraw mengetikkannya
+  // sebagai union — bentuknya sama, isinya memang keluaran Excalidraw sendiri.
+  const files = scene.files
+    ? (Object.fromEntries(
+        Object.entries(scene.files).map(([id, f]) => [id, { ...f, lastRetrieved: f.created }]),
+      ) as BinaryFiles)
+    : undefined
+  if (scene.elements.length === 0 && !files) return null
+  return {
+    elements: scene.elements as ExcalidrawElement[],
+    files,
+    scrollToContent: true,
+  }
+}
+
 /** Satu instance editor Excalidraw — dipanggil tepat satu kali. */
 function CanvasInstance({
+  initialData,
   onReady,
   onChange,
   renderTopRightUI,
 }: {
+  initialData: ExcalidrawInitialDataState | null
   onReady: (api: ExcalidrawImperativeAPI) => void
   onChange: (els: readonly ExcalidrawElement[], _appState: unknown, fs: BinaryFiles) => void
   renderTopRightUI?: () => JSX.Element
@@ -43,6 +78,7 @@ function CanvasInstance({
   const { lang } = useLang()
   return (
     <Excalidraw
+      initialData={initialData}
       excalidrawAPI={onReady}
       langCode={lang === 'id' ? 'id' : 'en'}
       theme="light"
@@ -72,6 +108,10 @@ function CanvasInstance({
  * wrapper yang sama naik jadi fixed inset-0 menutupi layar, lalu turun
  * lagi. Karena tidak ada remount ataupun appendChild, scene yang sudah
  * digambar mustahil hilang, di mode mana pun.
+ *
+ * Isi tersimpan dipasang lewat prop `initialData` (lihat toInitialData),
+ * BUKAN lewat updateScene() sesudah mount — itu balapan dengan
+ * initializeScene() Excalidraw dan berakhir dengan kanvas kosong tersimpan.
  */
 export function ExcalidrawCanvas({
   scene,
@@ -83,7 +123,6 @@ export function ExcalidrawCanvas({
   const { t } = useLang()
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null)
   const boardRef = useRef<HTMLDivElement>(null)
-  const [ready, setReady] = useState(false)
   const [isFull, setIsFull] = useState(false)
   const saveRef = useRef(onSave)
   saveRef.current = onSave
@@ -91,6 +130,11 @@ export function ExcalidrawCanvas({
   // tidak pernah mengusik pandangannya lagi.
   const userNavigatedRef = useRef(false)
   const lastSizeRef = useRef<{ w: number; h: number } | null>(null)
+  // Excalidraw membaca `initialData` SEKALI saat mount, jadi nilainya
+  // dibekukan: update data di belakang tidak boleh menimpa kanvas yang
+  // sedang digambar.
+  const initialRef = useRef<ExcalidrawInitialDataState | null | undefined>(undefined)
+  if (initialRef.current === undefined) initialRef.current = toInitialData(scene)
 
   /** Zoom & geser kanvas supaya SELURUH isi gambar terlihat. */
   const fitToContent = useCallback((animate = false) => {
@@ -110,34 +154,7 @@ export function ExcalidrawCanvas({
 
   const handleReady = useCallback((api: ExcalidrawImperativeAPI) => {
     apiRef.current = api
-    setReady(true)
   }, [])
-
-  // Kirim scene tersimpan ke API begitu editor siap (sekali per mount).
-  useEffect(() => {
-    if (!ready || !apiRef.current) return
-    const initial: CanvasScene = scene ?? { elements: [] }
-    if (initial.elements.length > 0 || (initial.files && Object.keys(initial.files).length > 0)) {
-      apiRef.current.updateScene({
-        elements: initial.elements as ExcalidrawElement[],
-      })
-      if (initial.files) {
-        apiRef.current.addFiles(
-          Object.values(initial.files).map((f) => ({
-            id: f.id,
-            dataURL: f.dataURL,
-            mimeType: f.mimeType,
-            created: f.created,
-            lastRetrieved: f.created,
-          })) as never,
-        )
-      }
-      // Gambar tersimpan langsung dipasangkan di layar — tanpa ini kamera
-      // bisa menghadap area kosong dan isi kanvas dianggap "hilang".
-      window.setTimeout(() => fitToContent(), 60)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready])
 
   // Ukuran kanvas berubah (inline ↔ full screen, jendela di-resize, orientasi
   // HP) dan pengguna belum pernah navigasi manual: pasangkan ulang seluruh isi
@@ -219,7 +236,12 @@ export function ExcalidrawCanvas({
             : 'relative h-[68dvh] rounded-2xl border hairline',
         )}
       >
-        <CanvasInstance onReady={handleReady} onChange={handleChange} renderTopRightUI={renderTopRightUI} />
+        <CanvasInstance
+          initialData={initialRef.current}
+          onReady={handleReady}
+          onChange={handleChange}
+          renderTopRightUI={renderTopRightUI}
+        />
 
         {/* Tombol Tutup — satu-satunya cara keluar mode full screen. */}
         {isFull && (

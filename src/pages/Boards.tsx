@@ -232,7 +232,9 @@ export function BoardDetailPage() {
           </div>
         }
       >
-        <ExcalidrawCanvas scene={board.scene ?? null} onSave={saveScene} />
+        {/* key = id board: pindah board harus me-remount kanvas, karena
+            initialData hanya dibaca sekali saat mount. */}
+        <ExcalidrawCanvas key={board.id} scene={board.scene ?? null} onSave={saveScene} />
       </Suspense>
 
       <Modal
