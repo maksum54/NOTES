@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { readJSON, removeRaw, writeJSON } from '@/lib/storage'
-import { GOOGLE_CLIENT_ID, connectDrive, disconnectDrive, isDriveConfigured } from '@/lib/drive'
+import { GOOGLE_CLIENT_ID, connectDrive, disconnectDrive, isDriveConfigured, wasEverConnected } from '@/lib/drive'
 
 /* ============================================================
    MODE LOGIN
@@ -83,7 +83,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     if (!isDriveConfigured()) throw new Error('google-not-configured')
-    await connectDrive(true)
+    // Pertama kali (belum pernah setujui Drive): tampilkan consent.
+    // Login berikutnya: tersambung otomatis secara senyap, tanpa popup.
+    await connectDrive(!wasEverConnected())
     const profile = await fetchGoogleProfile()
     setAccount({
       mode: 'google',

@@ -143,28 +143,43 @@ export async function connectDrive(interactive = true): Promise<void> {
   if (!isDriveConfigured()) throw new Error('drive-not-configured')
   const accounts = await loadGis()
 
-  await new Promise<void>((resolve, reject) => {
-    const client = accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: SCOPE,
-      callback: (resp) => {
-        if (resp.error || !resp.access_token) {
-          reject(new Error(resp.error || 'no-access-token'))
-          return
-        }
-        writeRaw('driveEverConnected', '1')
-        writeRaw(
-          'driveToken',
-          JSON.stringify({
-            accessToken: resp.access_token,
-            expiresAt: Date.now() + (resp.expires_in ?? 3600) * 1000,
-          } satisfies StoredToken),
-        )
-        resolve()
-      },
+  const request = (prompt: string): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      const client = accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: SCOPE,
+        callback: (resp) => {
+          if (resp.error || !resp.access_token) {
+            reject(new Error(resp.error || 'no-access-token'))
+            return
+          }
+          writeRaw('driveEverConnected', '1')
+          writeRaw(
+            'driveToken',
+            JSON.stringify({
+              accessToken: resp.access_token,
+              expiresAt: Date.now() + (resp.expires_in ?? 3600) * 1000,
+            } satisfies StoredToken),
+          )
+          resolve()
+        },
+      })
+      client.requestAccessToken({ prompt })
     })
-    client.requestAccessToken({ prompt: interactive ? 'consent' : '' })
-  })
+
+  // User sudah pernah menyetujui akses Drive -> minta token SENYAP dulu
+  // (tanpa popup), supaya login berikutnya tidak muncul layar izin lagi.
+  // Kalau senyap gagal (mis. sesi Google habis) dan panggilan ini interaktif,
+  // barulah tampilkan layar consent.
+  if (wasEverConnected()) {
+    try {
+      await request('')
+      return
+    } catch {
+      if (!interactive) throw new Error('drive-silent-failed')
+    }
+  }
+  await request('consent')
 }
 
 export async function disconnectDrive(): Promise<void> {
@@ -172,7 +187,9 @@ export async function disconnectDrive(): Promise<void> {
   removeRaw('driveToken')
   removeRaw('driveFileId')
   removeRaw('driveStorageFolderId')
-  removeRaw('driveEverConnected')
+  // driveEverConnected SENGAJA dipertahankan: user yang pernah menyetujui
+  // akses Drive tidak perlu menyetujui ulang tiap login — login berikutnya
+  // tersambung otomatis secara senyap.
   if (!token) return
   try {
     const accounts = await loadGis()
