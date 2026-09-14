@@ -42,3 +42,8 @@ coverage
 
 # typescript incremental build
 *.tsbuildinfo
+
+# output self-test family builder (revit/)
+revit/**/_selftest/solids.json
+revit/**/_selftest/preview_*.png
+revit/**/__pycache__
