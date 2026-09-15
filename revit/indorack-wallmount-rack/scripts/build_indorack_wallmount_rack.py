@@ -47,6 +47,7 @@ DIMS_AS_INSTANCE   = False     # False = Depth/Width/Height jadi TYPE parameter 
 WORK_PLANE_BASED   = False     # True = family bisa ditempel ke work plane / face dinding
 BUILD_TYPES        = True      # bikin family types untuk ukuran katalog lain
 LOAD_INTO_PROJECT  = True      # load ke project yang sedang aktif (kalau ada)
+OPEN_FAMILY_AFTER_BUILD = True # buka file .rfa hasilnya di Revit (dilewati saat jalan di Dynamo)
 VERBOSE            = True
 
 # -----------------------------------------------------------------------------
@@ -145,10 +146,20 @@ def ft2mm(v):
     return float(v) * FT2MM
 
 
+def running_in_dynamo():
+    return '__revit__' not in globals() or globals().get('__revit__') is None
+
+
 def get_uiapp():
+    """UIApplication dari pyRevit / RevitPythonShell (__revit__) atau dari Dynamo."""
     g = globals()
     if '__revit__' in g and g['__revit__'] is not None:
         return g['__revit__']
+    for asm in ('RevitServices', 'RevitAPI', 'RevitAPIUI', 'RevitNodes'):
+        try:
+            clr.AddReference(asm)
+        except Exception:
+            pass
     try:
         from RevitServices.Persistence import DocumentManager
         return DocumentManager.Instance.CurrentUIApplication
@@ -156,6 +167,20 @@ def get_uiapp():
         pass
     raise Exception('Tidak menemukan UIApplication. Jalankan script ini dari '
                     'pyRevit, RevitPythonShell, atau Dynamo Python node.')
+
+
+def close_dynamo_transaction():
+    """Dynamo membuka transaksi sendiri; harus ditutup sebelum SaveAs / LoadFamily."""
+    try:
+        clr.AddReference('RevitServices')
+    except Exception:
+        pass
+    try:
+        from RevitServices.Transactions import TransactionManager
+        TransactionManager.Instance.ForceCloseTransaction()
+        return True
+    except Exception:
+        return False
 
 
 def find_template(app):
@@ -1144,6 +1169,7 @@ def main():
         log('!! GAGAL: {0}'.format(ex))
         raise
 
+    close_dynamo_transaction()
     path = output_path()
     opts = SaveAsOptions()
     opts.OverwriteExistingFile = True
@@ -1157,11 +1183,28 @@ def main():
             uidoc = uiapp.ActiveUIDocument
             pdoc = uidoc.Document if uidoc is not None else None
             if pdoc is not None and not pdoc.IsFamilyDocument:
-                FDOC.LoadFamily(pdoc)
-                loaded = True
-                log('Family di-load ke : ' + pdoc.Title)
+                close_dynamo_transaction()
+                t2 = Transaction(pdoc, 'Load Indorack Wallmount Rack')
+                t2.Start()
+                try:
+                    FDOC.LoadFamily(pdoc)
+                    t2.Commit()
+                    loaded = True
+                    log('Family di-load ke : ' + pdoc.Title)
+                except Exception:
+                    t2.RollBack()
+                    raise
         except Exception as ex:
-            log('! Load ke project gagal ({0}) - load manual saja.'.format(ex))
+            log('! Load ke project gagal ({0}) - load manual lewat Insert > Load Family.'
+                .format(ex))
+
+    if OPEN_FAMILY_AFTER_BUILD and not running_in_dynamo():
+        try:
+            FDOC.Close(False)
+            uiapp.OpenAndActivateDocument(path)
+            log('Family dibuka     : ' + os.path.basename(path))
+        except Exception as ex:
+            log('! Tidak bisa membuka otomatis ({0}) - buka manual file di atas.'.format(ex))
 
     log('-' * 70)
     log('RINGKASAN')

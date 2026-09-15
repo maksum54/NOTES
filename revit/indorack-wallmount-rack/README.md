@@ -42,40 +42,53 @@ Height = U_Count x 44.45 mm + 100.5 mm
 
 ```
 revit/indorack-wallmount-rack/
+├─ dynamo/
+│  └─ Buat_Family_Indorack_WIR7010S.dyn   <- PAKAI INI: buka di Dynamo, klik Run
 ├─ scripts/
-│  ├─ build_indorack_wallmount_rack.py   <- SCRIPT UTAMA, jalankan di Revit
+│  ├─ build_indorack_wallmount_rack.py    <- kode yang sama, untuk pyRevit / RPS
+│  ├─ export/make_dyn.py                  <- regenerate .dyn dari .py
 │  └─ _selftest/                          <- uji logika script di luar Revit (mock API)
 ├─ type-catalog/
 │  └─ Indorack_Wallmount_Rack_19in_SingleGlassDoor.txt
+├─ model/geometry-wir7010s.json           <- dump koordinat seluruh solid
 └─ docs/                                  <- preview + scan datasheet
 ```
 
-Revit tidak bisa menerima file `.rfa` yang dibuat di luar Revit (format biner
-tertutup), jadi deliverable-nya berupa **script generator**: dijalankan sekali
-di Revit 2025, hasilnya file `.rfa` asli lengkap dengan geometry, parameter,
-constraint, material, dan family types.
+Format `.rfa` itu biner tertutup Autodesk — tidak ada cara membuatnya selain
+dari dalam Revit. Jadi yang dikirim adalah **generator**-nya: dijalankan sekali
+di Revit 2025 (± 20 detik), hasilnya file `.rfa` asli lengkap dengan geometry,
+parameter, constraint, material, dan family types. Isi `dynamo/` dan
+`scripts/` identik, cuma beda pembungkus.
 
 ---
 
 ## 3. Cara menjalankan
 
-### Opsi A — pyRevit (paling gampang)
-1. Install pyRevit (gratis) → buka Revit 2025.
-2. `pyRevit` tab → `pyRevit` → **Run Script…** → pilih
-   `scripts/build_indorack_wallmount_rack.py`.
-3. Tunggu ± 10–30 detik. Log muncul di output window.
+### Cara utama — Dynamo (bawaan Revit, TANPA install apa pun)
 
-### Opsi B — RevitPythonShell
-1. Buka Revit 2025 → tab `Add-Ins` → `Revit Python Shell` → **Open Python Shell**.
-2. Menu shell: `File > Open` → pilih script-nya → **Run**.
+1. Buka Revit 2025 (boleh project kosong, boleh project yang sedang dikerjakan).
+2. Tab **Manage → Dynamo**.
+3. **Open…** → pilih `dynamo/Buat_Family_Indorack_WIR7010S.dyn`.
+4. Pastikan mode **Manual**, lalu klik **Run**.
+5. Tunggu ± 20 detik. Hasilnya muncul di bubble node (ringkasan + lokasi file).
 
-### Opsi C — Dynamo (bawaan Revit, tanpa install apa pun)
-1. `Manage > Dynamo` → New.
-2. Tarik node **Python Script** → Edit → hapus isinya → paste seluruh isi
-   `build_indorack_wallmount_rack.py` → Save → Run.
+Kalau Dynamo bertanya soal versi graph, klik saja lanjut — graph ini cuma berisi
+satu node Python, tanpa package tambahan.
 
-Hasil: `C:\Users\<nama>\Documents\Indorack_Wallmount_Rack_19in_SingleGlassDoor.rfa`
-(kalau ada project yang terbuka, family-nya sekaligus di-load ke project itu).
+Hasil:
+`C:\Users\<nama>\Documents\Indorack_Wallmount_Rack_19in_SingleGlassDoor.rfa`
+dan kalau ada project terbuka, family-nya **langsung di-load** ke project itu —
+tinggal ketik `CM` (Component/Place a Component) untuk menempatkannya.
+
+### Alternatif — pyRevit
+`pyRevit` tab → **Run Script…** → pilih `scripts/build_indorack_wallmount_rack.py`.
+
+### Alternatif — RevitPythonShell
+`Add-Ins` → **Open Python Shell** → `File > Open` → pilih script-nya → **Run**.
+
+> Lewat pyRevit/RPS, file `.rfa`-nya sekalian dibuka di Revit setelah selesai
+> (matikan dengan `OPEN_FAMILY_AFTER_BUILD = False`). Lewat Dynamo, langkah ini
+> sengaja dilewati karena Dynamo tidak suka ganti dokumen aktif saat graph jalan.
 
 ---
 
@@ -241,6 +254,8 @@ sebagai material dengan render appearance bertekstur, bukan geometry.
 | Mau kategori lain (Data Devices / Electrical Equipment) | ubah `FAMILY_CATEGORY` di KONFIGURASI |
 | Mau D/W/H jadi instance parameter (beda-beda per rack tanpa bikin type) | set `DIMS_AS_INSTANCE = True` (type catalog jadi tidak berlaku) |
 | Family tidak otomatis masuk project | load manual: `Insert > Load Family` |
+| Dynamo: node Python merah / error | pastikan engine node = **CPython3**, dan Revit sedang tidak di tengah perintah lain |
+| Mau ubah isi script lalu regenerate .dyn | edit `scripts/build_indorack_wallmount_rack.py`, jalankan `python3 scripts/export/make_dyn.py` |
 | Ada `! Align gagal` di log | kunci manual pakai `Modify > Align` seperti di bagian 7 |
 
 ---
