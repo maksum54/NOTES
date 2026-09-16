@@ -21,6 +21,7 @@ const KEYS = {
   assistantChat: 'notes.assistant.chat',
   installDismissed: 'notes.install.dismissed',
   pinnedPopup: 'notes.pinnedPopup',
+  stickyAuto: 'notes.sticky.auto',
 } as const
 
 export type StorageKey = keyof typeof KEYS

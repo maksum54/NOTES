@@ -39,6 +39,7 @@ NAMA PROJECT → NAMA BUILDING   (nama bebas diketik sendiri)
 | **Import Excel** | `.xlsx` / `.xls` / `.csv` → catatan standard, dengan pengenalan nama kolom yang toleran (ID & EN) |
 | **Papan coretan** | Coret-coret di atas gambar seperti papan tulis: pena, stabilo, teks, penghapus. Koordinat ternormalisasi jadi tetap presisi di HP maupun PC |
 | **Warning** | Notifikasi di HP & PC saat AI menemukan penyimpangan atau target submit mendekat/lewat |
+| **Sticky note mengambang** | Catatan/task yang di-pin bisa dilepas jadi JENDELA sendiri yang selalu tampil di atas aplikasi lain (Document Picture-in-Picture) — tetap terlihat walau browser di-minimize |
 | **Offline-first** | localStorage-primary + service worker; app tetap jalan penuh tanpa internet |
 
 ## Menjalankan
@@ -114,7 +115,7 @@ src/
 ├── features/
 │   └── whiteboard/   Papan coretan di atas gambar
 ├── i18n/             Dictionary id.ts & en.ts
-├── lib/              storage, ai (vikey), drive, excel, notify, utils
+├── lib/              storage, ai (vikey), drive, excel, notify, detachedWindow, utils
 ├── pages/            Login, Dashboard, Projects, ProjectDetail,
 │                     BuildingDetail, TaskDetail, Standards, Warnings,
 │                     Assistant, Settings
@@ -128,6 +129,14 @@ src/
 - **Backup otomatis di-debounce 4 detik**, jadi mengetik cepat tidak memicu puluhan upload.
 - **Gambar dikompres** (maks 1600px, JPEG q82) sebelum disimpan supaya localStorage tidak cepat penuh.
 - **Coretan disimpan sebagai koordinat 0..1**, bukan piksel, jadi tetap menempel presisi di ukuran layar apa pun.
+- **Sticky note = jendela OS, bukan div.** Popup yang di-pin bisa dipindah ke
+  jendela Document Picture-in-Picture (Chrome/Edge 116+) yang selalu di atas
+  aplikasi lain, jadi catatan tetap terlihat saat browser di-minimize atau
+  ketutup Excel/AutoCAD. Browser tanpa API itu memakai `window.open` biasa —
+  tetap jendela sendiri, hanya tidak always-on-top. Isinya tetap dirender React
+  halaman utama lewat portal (CSS & tema disalin ke dokumen jendela), sehingga
+  editing, auto-save, dan sinkron Drive berjalan sama persis. Aktifkan
+  "pin = langsung jadi sticky note" di Pengaturan -> Tampilan kalau mau otomatis.
 - **API key AI tidak pernah masuk bundle produksi** — diisi user lewat Pengaturan.
 - **Building adalah unit terkecil.** Tidak ada level sub-area; nama building
   bebas, sehingga satu project bisa berisi "Raw Material Warehouse", "Utility",
