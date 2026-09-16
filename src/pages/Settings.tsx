@@ -16,6 +16,7 @@ import {
   backupToDrive, connectDrive, disconnectDrive, driveLastSync, isAutoSyncOn,
   isDriveConfigured, isDriveConnected, restoreFromDrive, setAutoSync,
 } from '@/lib/drive'
+import { isAutoStickyOn, setAutoSticky, supportsAlwaysOnTop, supportsDetachedWindow } from '@/lib/detachedWindow'
 import { clearAppStorage, storageBytes } from '@/lib/storage'
 import { downloadBlob, formatBytes, formatDateTime } from '@/lib/utils'
 import type { AppData } from '@/types'
@@ -39,6 +40,10 @@ export function SettingsPage() {
   const [lastSync, setLastSync] = useState(driveLastSync)
   const [driveBusy, setDriveBusy] = useState<'sync' | 'backup' | 'restore' | 'connect' | null>(null)
   const [driveNotice, setDriveNotice] = useState<Notice>(null)
+
+  const [stickyAuto, setStickyAutoState] = useState(isAutoStickyOn)
+  const canDetach = useRef(supportsDetachedWindow()).current
+  const alwaysOnTop = useRef(supportsAlwaysOnTop()).current
 
   const [bytes, setBytes] = useState(0)
   const [confirmReset, setConfirmReset] = useState(false)
@@ -206,6 +211,37 @@ export function SettingsPage() {
             <MoonIcon className="h-4 w-4" />
             <MonitorIcon className="h-4 w-4" />
             <GlobeIcon className="ml-auto h-4 w-4" />
+          </div>
+
+          {/* Catatan pin -> jendela sticky note sendiri (tetap terlihat walau
+              browser di-minimize). */}
+          <div className="mt-4 border-t border-glass-border/40 pt-4">
+            <label
+              className={
+                canDetach
+                  ? 'flex cursor-pointer items-center gap-3 rounded-2xl bg-glass-bg/15 px-3.5 py-3'
+                  : 'flex items-center gap-3 rounded-2xl bg-glass-bg/15 px-3.5 py-3 opacity-60'
+              }
+            >
+              <input
+                type="checkbox"
+                disabled={!canDetach}
+                checked={stickyAuto && canDetach}
+                onChange={(e) => {
+                  setAutoSticky(e.target.checked)
+                  setStickyAutoState(e.target.checked)
+                }}
+                className="h-4 w-4 accent-[rgb(var(--accent))]"
+              />
+              <span className="flex-1 text-[13.5px] font-semibold text-ink">{t('settings.stickyAuto')}</span>
+            </label>
+            <p className="mt-2 text-[12px] text-ink-faint">
+              {!canDetach
+                ? t('settings.stickyUnsupported')
+                : alwaysOnTop
+                  ? t('settings.stickyHint')
+                  : t('settings.stickyHintFallback')}
+            </p>
           </div>
         </GlassCard>
 

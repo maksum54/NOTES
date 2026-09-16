@@ -61,21 +61,33 @@ interface TaskNoteModalProps {
   /** Dipanggil saat popup baru saja di-pin — halaman boleh menyerahkan
    *  popup ke host global (PinnedPopupHost) supaya tetap hidup saat pindah halaman. */
   onPinned?: () => void
-  /** Tampilkan tombol "tampil di atas aplikasi lain" (Document PiP). */
+  /** Tombol "lepas ke jendela sendiri" (sticky note). Tidak diberikan =
+   *  tombolnya disembunyikan (mis. browser tidak mendukung). */
   onPipRequest?: () => void
-  /** Kontainer portal (default document.body) — dipakai host untuk jendela PiP. */
+  /** Popup sedang dirender di jendela sticky terpisah: isi satu jendela
+   *  penuh, tanpa geser/resize manual (jendelanya sendiri yang diatur OS). */
+  detached?: boolean
+  /** Kontainer portal (default document.body) — dipakai host untuk jendela sticky. */
   portalContainer?: HTMLElement | null
 }
 
 export function TaskNoteModal({
   open, initial, editedAt, onChange, onClose, onArchive, onDelete, locationLabel,
-  persistKey, initialBounds, onPinned, onPipRequest, portalContainer,
+  persistKey, initialBounds, onPinned, onPipRequest, detached = false, portalContainer,
 }: TaskNoteModalProps) {
   const { t, lang } = useLang()
   const { data } = useData()
   const titleRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
+
+  /* Dokumen tempat popup ini BENAR-BENAR dirender. Saat catatan dilepas ke
+     jendela sticky-note (Document PiP / pop-up), editor hidup di dokumen
+     lain — execCommand, getSelection, dan listener harus menunjuk ke sana,
+     bukan ke dokumen halaman utama. */
+  const ownerDoc = (): Document =>
+    editorRef.current?.ownerDocument ?? portalContainer?.ownerDocument ?? document
+  const ownerWin = (): Window => ownerDoc().defaultView ?? window
   const [draft, setDraft] = useState(initial)
   const [panel, setPanel] = useState<null | 'palette' | 'reminder' | 'more' | 'collab'>(null)
   const [format, setFormat] = useState({ bold: false, italic: false, underline: false, strike: false })
@@ -126,13 +138,14 @@ export function TaskNoteModal({
       // Saat melayang (pinned), Escape sengaja diabaikan — tutup lewat tombol X.
       if (e.key === 'Escape' && !draft.pinned) requestClose()
     }
-    document.addEventListener('keydown', onKey)
+    const doc = ownerDoc()
+    doc.addEventListener('keydown', onKey)
     // Popup melayang TIDAK mengunci scroll halaman di belakangnya.
-    const prev = document.body.style.overflow
-    if (!draft.pinned) document.body.style.overflow = 'hidden'
+    const prev = doc.body.style.overflow
+    if (!draft.pinned) doc.body.style.overflow = 'hidden'
     return () => {
-      document.removeEventListener('keydown', onKey)
-      if (!draft.pinned) document.body.style.overflow = prev
+      doc.removeEventListener('keydown', onKey)
+      if (!draft.pinned) doc.body.style.overflow = prev
     }
     // draft.pinned disengaja: listener perlu mode terkini.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,7 +165,7 @@ export function TaskNoteModal({
 
   /** Simpan seleksi editor agar format tetap kena setelah klik toolbar. */
   const saveSelection = () => {
-    const sel = window.getSelection()
+    const sel = ownerWin().getSelection()
     if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
       savedRange.current = sel.getRangeAt(0).cloneRange()
     }
@@ -160,7 +173,7 @@ export function TaskNoteModal({
 
   const restoreSelection = () => {
     editorRef.current?.focus()
-    const sel = window.getSelection()
+    const sel = ownerWin().getSelection()
     if (!sel) return
     sel.removeAllRanges()
     if (savedRange.current) sel.addRange(savedRange.current)
@@ -176,14 +189,14 @@ export function TaskNoteModal({
 
   const refreshFormat = () =>
     setFormat({
-      bold: document.queryCommandState('bold'),
-      italic: document.queryCommandState('italic'),
-      underline: document.queryCommandState('underline'),
-      strike: document.queryCommandState('strikeThrough'),
+      bold: ownerDoc().queryCommandState('bold'),
+      italic: ownerDoc().queryCommandState('italic'),
+      underline: ownerDoc().queryCommandState('underline'),
+      strike: ownerDoc().queryCommandState('strikeThrough'),
     })
 
   const applyCmd = (cmd: 'bold' | 'italic' | 'underline' | 'strikeThrough') => {
-    document.execCommand(cmd)
+    ownerDoc().execCommand(cmd)
     refreshFormat()
     emitBody()
   }
@@ -191,11 +204,11 @@ export function TaskNoteModal({
   const applySize = (px: number) => {
     setSize(px)
     restoreSelection()
-    document.execCommand('fontSize', false, '7')
+    ownerDoc().execCommand('fontSize', false, '7')
     const el = editorRef.current
     if (el) {
       el.querySelectorAll('font[size="7"]').forEach((font) => {
-        const span = document.createElement('span')
+        const span = ownerDoc().createElement('span')
         span.setAttribute('style', `font-size:${px}px`)
         span.innerHTML = font.innerHTML
         font.replaceWith(span)
@@ -206,7 +219,7 @@ export function TaskNoteModal({
 
   const applyColor = (hex: string) => {
     restoreSelection()
-    document.execCommand('foreColor', false, hex)
+    ownerDoc().execCommand('foreColor', false, hex)
     refreshFormat()
     emitBody()
   }
@@ -241,7 +254,7 @@ export function TaskNoteModal({
   const [lastHighlight, setLastHighlight] = useState<string>(HIGHLIGHT_COLORS[0])
   const applyHighlight = (hex: string, toggleOffAny = false) => {
     restoreSelection()
-    const sel = window.getSelection()
+    const sel = ownerWin().getSelection()
     const el = editorRef.current
     if (sel && el && sel.rangeCount > 0) {
       const range = sel.getRangeAt(0)
@@ -282,7 +295,7 @@ export function TaskNoteModal({
 
 
       if (!sel.isCollapsed) {
-        const probe = document.createElement('div')
+        const probe = ownerDoc().createElement('div')
         probe.appendChild(range.cloneContents())
 
         // Apakah SETIAP teks non-kosong di seleksi sudah tertutup stabilo?
@@ -290,7 +303,7 @@ export function TaskNoteModal({
         let covered = false
         if (probeHighlights.length > 0) {
           covered = true
-          const walker = document.createTreeWalker(probe, NodeFilter.SHOW_TEXT)
+          const walker = ownerDoc().createTreeWalker(probe, NodeFilter.SHOW_TEXT)
           for (let node = walker.nextNode(); node; node = walker.nextNode()) {
             if (!(node.textContent ?? '').trim()) continue
             let inside = false
@@ -330,9 +343,9 @@ export function TaskNoteModal({
 
     // Toggle ON: stabilo seleksi dengan warna.
     // Firefox tidak punya hiliteColor; styleWithCSS + bgColor jadi fallback.
-    document.execCommand('styleWithCSS', false, 'false')
-    const ok = document.execCommand('hiliteColor', false, hex)
-    if (!ok) document.execCommand('backColor', false, hex)
+    ownerDoc().execCommand('styleWithCSS', false, 'false')
+    const ok = ownerDoc().execCommand('hiliteColor', false, hex)
+    if (!ok) ownerDoc().execCommand('backColor', false, hex)
     // Ingat warna ini — tombol stabilo memakainya untuk blok berikutnya.
     setLastHighlight(hex)
     refreshFormat()
@@ -343,7 +356,7 @@ export function TaskNoteModal({
    *  Bentuk '<h1>' (dengan kurung) paling kompatibel antar browser. */
   const applyBlock = (tag: 'h1' | 'h2' | 'p') => {
     restoreSelection()
-    document.execCommand('formatBlock', false, `<${tag}>`)
+    ownerDoc().execCommand('formatBlock', false, `<${tag}>`)
     emitBody()
   }
 
@@ -363,22 +376,22 @@ export function TaskNoteModal({
       if (!el) return
       el.focus()
       const html = `<img src="${reader.result}" alt="">`
-      const ok = document.execCommand('insertHTML', false, html)
+      const ok = ownerDoc().execCommand('insertHTML', false, html)
       if (!ok) {
         // Fallback: sisipkan di posisi kursor terakhir (atau di akhir editor).
-        const sel = window.getSelection()
+        const sel = ownerWin().getSelection()
         let range: Range
         if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
           range = sel.getRangeAt(0)
         } else if (savedRange.current && el.contains(savedRange.current.startContainer)) {
           range = savedRange.current
         } else {
-          range = document.createRange()
+          range = ownerDoc().createRange()
           range.selectNodeContents(el)
           range.collapse(false)
         }
         range.deleteContents()
-        const tpl = document.createElement('template')
+        const tpl = ownerDoc().createElement('template')
         tpl.innerHTML = html
         range.insertNode(tpl.content)
         // Geser kursor ke setelah gambar supaya ketikan lanjut mulus.
@@ -396,11 +409,11 @@ export function TaskNoteModal({
   const insertCheckbox = () => {
     restoreSelection()
     const el = editorRef.current
-    const sel = window.getSelection()
+    const sel = ownerWin().getSelection()
     if (!el) return
 
     const makeItem = (text = '') => {
-      const li = document.createElement('li')
+      const li = ownerDoc().createElement('li')
       li.setAttribute('data-check', 'false')
       li.textContent = text
       return li
@@ -429,7 +442,7 @@ export function TaskNoteModal({
         if (e.tagName === 'LI' && (e.parentElement?.tagName === 'UL' || e.parentElement?.tagName === 'OL')) {
           e.setAttribute('data-check', 'false')
           if (e.parentElement.tagName === 'OL') {
-            const ul = document.createElement('ul')
+            const ul = ownerDoc().createElement('ul')
             ul.setAttribute('data-checklist', '')
             e.replaceWith(ul)
             ul.appendChild(e)
@@ -442,7 +455,7 @@ export function TaskNoteModal({
     }
 
     // Selain itu: sisipkan list checklist baru di posisi kursor.
-    const ul = document.createElement('ul')
+    const ul = ownerDoc().createElement('ul')
     ul.setAttribute('data-checklist', '')
     ul.appendChild(makeItem())
     if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
@@ -454,7 +467,7 @@ export function TaskNoteModal({
     }
     // Pindahkan kursor ke dalam item kosong supaya langsung bisa mengetik.
     const item = ul.querySelector('li')
-    const newRange = document.createRange()
+    const newRange = ownerDoc().createRange()
     if (item) {
       newRange.selectNodeContents(item)
       newRange.collapse(true)
@@ -468,7 +481,7 @@ export function TaskNoteModal({
 
   /** Buka file picker tanpa kehilangan posisi kursor editor. */
   const pickImage = () => {
-    const sel = window.getSelection()
+    const sel = ownerWin().getSelection()
     if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
       savedRange.current = sel.getRangeAt(0).cloneRange()
     }
@@ -497,12 +510,10 @@ export function TaskNoteModal({
   /* Mode melayang: dipicu pin. Popup kecil menempel di pojok, halaman tetap bisa dipakai. */
   const floating = draft.pinned
 
-  /* Viewport tempat popup dirender — jendela PiP punya ukurannya sendiri. */
+  /* Viewport tempat popup dirender — jendela sticky punya ukurannya sendiri. */
   const viewport = () => {
-    const pip = (window as unknown as { documentPictureInPicture?: { window?: Window | null } })
-      .documentPictureInPicture?.window
-    if (pip && !pip.closed) return { w: pip.innerWidth, h: pip.innerHeight }
-    return { w: window.innerWidth, h: window.innerHeight }
+    const win = ownerWin()
+    return { w: win.innerWidth, h: win.innerHeight }
   }
 
   /* Tarik tepi kiri/kanan dialog untuk melebarkan/mempersempit area input. */
@@ -518,11 +529,11 @@ export function TaskNoteModal({
       setWidth(next)
     }
     const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      ownerWin().removeEventListener('pointermove', onMove)
+      ownerWin().removeEventListener('pointerup', onUp)
     }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    ownerWin().addEventListener('pointermove', onMove)
+    ownerWin().addEventListener('pointerup', onUp)
   }
 
   /* Tarik tepi atas/bawah dialog untuk mengatur TINGGI area input. */
@@ -536,11 +547,11 @@ export function TaskNoteModal({
       setHeight(Math.min(Math.round(viewport().h * 0.9), Math.max(240, startH + delta)))
     }
     const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      ownerWin().removeEventListener('pointermove', onMove)
+      ownerWin().removeEventListener('pointerup', onUp)
     }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    ownerWin().addEventListener('pointermove', onMove)
+    ownerWin().addEventListener('pointerup', onUp)
   }
 
   /* Geser posisi popup melayang: tarik header (judul) ke mana saja di layar. */
@@ -571,12 +582,13 @@ export function TaskNoteModal({
     [],
   )
   const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!floating) return
+    if (!floating || detached) return
     e.preventDefault()
     const rect = dialogRef.current?.getBoundingClientRect()
+    const vp0 = viewport()
     const start = pos ?? {
-      x: Math.max(8, window.innerWidth - (rect?.width ?? 430) - 16),
-      y: Math.max(8, window.innerHeight - (rect?.height ?? 480) - 16),
+      x: Math.max(8, vp0.w - (rect?.width ?? 430) - 16),
+      y: Math.max(8, vp0.h - (rect?.height ?? 480) - 16),
     }
     const onMove = (ev: PointerEvent) => {
       const vp = viewport()
@@ -586,11 +598,11 @@ export function TaskNoteModal({
       })
     }
     const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      ownerWin().removeEventListener('pointermove', onMove)
+      ownerWin().removeEventListener('pointerup', onUp)
     }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    ownerWin().addEventListener('pointermove', onMove)
+    ownerWin().addEventListener('pointerup', onUp)
   }
 
   const dialog = (
@@ -599,20 +611,36 @@ export function TaskNoteModal({
       role="dialog"
       aria-modal={!floating}
       className={cx(
-        'relative flex w-full flex-col rounded-2xl border bg-white shadow-2xl outline-none',
-        floating
-          ? 'border-black/10 shadow-[0_18px_50px_-12px_rgb(0_0_0/0.45)] dark:border-white/15 dark:bg-[#1e2028]'
-          : 'max-h-[88dvh] border-black/10 dark:border-white/15 dark:bg-[#1e2028]',
+        'relative flex w-full flex-col border bg-white shadow-2xl outline-none',
+        detached
+          ? 'rounded-none border-transparent shadow-none dark:border-transparent dark:bg-[#1e2028]'
+          : floating
+            ? 'rounded-2xl border-black/10 shadow-[0_18px_50px_-12px_rgb(0_0_0/0.45)] dark:border-white/15 dark:bg-[#1e2028]'
+            : 'max-h-[88dvh] rounded-2xl border-black/10 dark:border-white/15 dark:bg-[#1e2028]',
       )}
-      style={{
-        ...(draft.color ? { backgroundColor: draft.color } : null),
-        width: floating ? (width ? `${width}px` : 'min(92vw, 430px)') : width ? `${width}px` : undefined,
-        maxWidth: floating ? '92vw' : 'min(92vw, 1080px)',
-        height: height ? `${height}px` : undefined,
-        maxHeight: floating ? '72dvh' : '88dvh',
-      }}
+      style={
+        detached
+          ? {
+              ...(draft.color ? { backgroundColor: draft.color } : null),
+              width: '100%',
+              height: '100%',
+              maxWidth: '100%',
+              maxHeight: '100%',
+            }
+          : {
+              ...(draft.color ? { backgroundColor: draft.color } : null),
+              width: floating ? (width ? `${width}px` : 'min(92vw, 430px)') : width ? `${width}px` : undefined,
+              maxWidth: floating ? '92vw' : 'min(92vw, 1080px)',
+              height: height ? `${height}px` : undefined,
+              maxHeight: floating ? '72dvh' : '88dvh',
+            }
+      }
     >
-      {/* ---------- handle resize: kiri/kanan (lebar) & atas/bawah (tinggi) ---------- */}
+      {/* ---------- handle resize: kiri/kanan (lebar) & atas/bawah (tinggi).
+           Di jendela sticky terpisah ukurannya diatur lewat bingkai jendela,
+           jadi handle-nya disembunyikan. ---------- */}
+      {!detached && (
+      <>
       <div
         onPointerDown={(e) => startResize(e, 'left')}
         className="absolute bottom-10 left-0 top-4 z-20 w-1.5 cursor-ew-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
@@ -641,10 +669,15 @@ export function TaskNoteModal({
       >
         <span className="absolute bottom-1 left-1/2 h-1 w-10 -translate-x-1/2 rounded-pill bg-ink/20" />
       </div>
+      </>
+      )}
         {/* ---------- judul + pin + tutup (header = handle geser saat melayang) ---------- */}
         <div
           onPointerDown={startDrag}
-          className={cx('flex items-center gap-1 px-5 pt-3', floating && 'cursor-move touch-none select-none')}
+          className={cx(
+            'flex items-center gap-1 px-5 pt-3',
+            floating && !detached && 'cursor-move touch-none select-none',
+          )}
         >
           <input
             ref={titleRef}
@@ -677,10 +710,13 @@ export function TaskNoteModal({
           {onPipRequest && (
             <button
               type="button"
-              aria-label={t('task.pip')}
-              title={t('task.pip')}
+              aria-label={detached ? t('task.pipBack') : t('task.pip')}
+              title={detached ? t('task.pipBack') : t('task.pip')}
               onClick={onPipRequest}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-soft hover:bg-black/5 hover:text-ink dark:hover:bg-white/10"
+              className={cx(
+                'grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-black/5 hover:text-ink dark:hover:bg-white/10',
+                detached ? 'text-accent' : 'text-ink-soft',
+              )}
             >
               <PipIconSmall />
             </button>
@@ -963,10 +999,10 @@ export function TaskNoteModal({
             <MoreIcon className="h-[18px] w-[18px]" />
           </button>
           <span className="mx-1 h-5 w-px bg-ink/10" />
-          <button type="button" title="Undo" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { document.execCommand('undo'); emitBody() }}>
+          <button type="button" title="Undo" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { ownerDoc().execCommand('undo'); emitBody() }}>
             <UndoIcon className="h-[18px] w-[18px]" />
           </button>
-          <button type="button" title="Redo" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { document.execCommand('redo'); emitBody() }}>
+          <button type="button" title="Redo" onMouseDown={keepFocus} className={toolBtn(false)} onClick={() => { ownerDoc().execCommand('redo'); emitBody() }}>
             <RedoIcon className="h-[18px] w-[18px]" />
           </button>
           </div>
@@ -986,16 +1022,20 @@ export function TaskNoteModal({
     <div
       className={cx(
         'fixed',
-        floating
-          ? 'z-[130]'
-          : 'inset-0 z-[110] flex items-start justify-center p-4 sm:items-center',
+        detached
+          ? 'inset-0 z-[130] flex'
+          : floating
+            ? 'z-[130]'
+            : 'inset-0 z-[110] flex items-start justify-center p-4 sm:items-center',
       )}
       style={
-        floating
-          ? pos
-            ? { left: pos.x, top: pos.y }
-            : { right: 16, bottom: 16 }
-          : undefined
+        detached
+          ? undefined
+          : floating
+            ? pos
+              ? { left: pos.x, top: pos.y }
+              : { right: 16, bottom: 16 }
+            : undefined
       }
     >
       <div
@@ -1003,7 +1043,9 @@ export function TaskNoteModal({
         onClick={floating ? undefined : requestClose}
         aria-hidden="true"
       />
-      <div className={floating ? '' : 'relative z-10 flex w-full justify-center'}>{dialog}</div>
+      <div className={detached ? 'flex h-full w-full' : floating ? '' : 'relative z-10 flex w-full justify-center'}>
+        {dialog}
+      </div>
     </div>,
     portalContainer ?? document.body,
   )
