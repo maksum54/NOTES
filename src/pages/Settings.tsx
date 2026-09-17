@@ -242,6 +242,7 @@ export function SettingsPage() {
                   ? t('settings.stickyHint')
                   : t('settings.stickyHintFallback')}
             </p>
+            <p className="mt-1.5 text-[12px] text-ink-faint">{t('settings.stickyMax')}</p>
           </div>
         </GlassCard>
 

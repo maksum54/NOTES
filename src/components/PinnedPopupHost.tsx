@@ -9,8 +9,15 @@ import {
   supportsDetachedWindow,
   type DetachedWindowHandle,
 } from '@/lib/detachedWindow'
-import { readRaw, removeRaw } from '@/lib/storage'
-import type { Note, Task } from '@/types'
+import {
+  bySlot,
+  keepPinnedPopups,
+  readPinnedPopups,
+  removePinnedPopup,
+  type PinnedRecord,
+  type PinSlot,
+} from '@/lib/pinnedPopups'
+import type { AppData, Note, Task } from '@/types'
 
 /**
  * HOST POPUP PINNED GLOBAL.
@@ -21,95 +28,69 @@ import type { Note, Task } from '@/types'
  * menyerahkan popup ke host ini (lewat PINNED_EVENT), dan host yang
  * merendernya di level App sehingga tidak terikat route mana pun.
  *
- * Host ini juga yang MELEPAS catatan ke jendela sendiri (tombol sticky note
- * di header popup): isinya pindah ke jendela Document PiP yang selalu tampil
- * di atas aplikasi lain — jadi catatan tetap terlihat walau browsernya
- * di-minimize. Lihat src/lib/detachedWindow.ts.
+ * Yang menempel boleh DUA sekaligus: satu di slot atas, satu di slot bawah
+ * (lihat lib/pinnedPopups.ts). Keduanya bisa dilepas ke JENDELA STICKY yang
+ * selalu tampil di atas aplikasi lain — di sana keduanya ditumpuk atas–bawah
+ * dalam satu jendela, karena browser hanya mengizinkan satu jendela
+ * Picture-in-Picture per tab. Lihat lib/detachedWindow.ts.
  */
 
 type PinnedTarget =
-  | { kind: 'note'; note: Note; bounds: PopupBounds }
-  | { kind: 'task'; projectId: string; buildingId: string; task: Task; label: string; bounds: PopupBounds }
+  | { kind: 'note'; key: string; slot: PinSlot; bounds: PopupBounds; note: Note }
+  | {
+      kind: 'task'
+      key: string
+      slot: PinSlot
+      bounds: PopupBounds
+      projectId: string
+      buildingId: string
+      task: Task
+      label: string
+    }
 
 export function PinnedPopupHost() {
   const { data, updateNote, updateTask } = useData()
   const { t } = useLang()
-  const [target, setTarget] = useState<PinnedTarget | null>(null)
-  const [tick, setTick] = useState(0)
-  /* Jendela sticky terpisah (null = popup masih menempel di halaman). */
+  const [targets, setTargets] = useState<PinnedTarget[]>([])
+  /* Dinaikkan tiap kali daftar pin berubah dari luar (pin baru dipasang,
+     popup ditutup) supaya daftar dibaca ulang dari localStorage. */
+  const [rev, setRev] = useState(0)
+
+  /* Jendela sticky bersama (null = semua popup masih menempel di halaman). */
   const [detached, setDetached] = useState<DetachedWindowHandle | null>(null)
   const detachedRef = useRef<DetachedWindowHandle | null>(null)
   detachedRef.current = detached
   const canDetach = useRef(supportsDetachedWindow()).current
-  /* Judul & ukuran popup terakhir — dipakai saat jendela sticky dibuka dari
-     listener pin (di luar alur render). */
-  const titleRef = useRef('')
-  const boundsRef = useRef<PopupBounds>({})
-  titleRef.current = target
-    ? (target.kind === 'note' ? target.note.title : target.task.title).trim()
-    : titleRef.current
-  boundsRef.current = target?.bounds ?? boundsRef.current
 
-  /* Ambil alih popup: dipanggil lewat event internal dari modal yang baru
-     di-pin, atau dipulihkan dari localStorage setelah reload. */
-  const adopt = () => {
-    const raw = readRaw('pinnedPopup')
-    if (!raw) return
-    try {
-      const saved = JSON.parse(raw) as {
-        key?: string
-        pos?: { x: number; y: number }
-        width?: number
-        height?: number
-      }
-      if (!saved.key) return
-      const bounds: PopupBounds = { pos: saved.pos, width: saved.width, height: saved.height }
-      if (saved.key.startsWith('note:')) {
-        const note = data.notes.find((n) => n.id === saved.key!.slice(5))
-        if (note && note.pinned) setTarget({ kind: 'note', note, bounds })
-        return
-      }
-      if (saved.key.startsWith('task:')) {
-        const taskId = saved.key.slice(5)
-        for (const project of data.projects) {
-          for (const building of project.buildings) {
-            const task = building.tasks.find((x) => x.id === taskId)
-            if (task && task.pinned) {
-              setTarget({
-                kind: 'task',
-                projectId: project.id,
-                buildingId: building.id,
-                task,
-                label: `${project.name} · ${building.name}`,
-                bounds,
-              })
-              return
-            }
-          }
-        }
-      }
-    } catch {
-      /* data korup — abaikan */
-    }
-  }
+  /* Dipakai saat jendela dibuka dari listener pin, di luar alur render. */
+  const targetsRef = useRef<PinnedTarget[]>([])
+  targetsRef.current = targets
+
+  /* Daftar popup = record di localStorage yang masih ketemu datanya.
+     Record yang catatannya sudah dihapus / tidak lagi pinned dibuang. */
+  useEffect(() => {
+    const records = readPinnedPopups()
+    const resolved = records
+      .slice()
+      .sort(bySlot)
+      .map((record) => resolve(record, data))
+      .filter((x): x is PinnedTarget => x !== null)
+    if (resolved.length !== records.length) keepPinnedPopups(resolved.map((x) => x.key))
+    setTargets(resolved)
+  }, [data, rev])
 
   /* Popup yang baru saja di-pin di salah satu halaman diserahkan ke sini. */
   useEffect(() => {
     const onPinned = () => {
-      // Modal menulis record pinnedPopup pada effect setelah state berubah —
-      // tunggu satu tick supaya recordnya sudah tertulis.
+      // Modal menulis record-nya pada effect setelah state berubah — tunggu
+      // satu tick supaya recordnya sudah tertulis.
       window.setTimeout(() => {
-        adopt()
+        setRev((x) => x + 1)
         // Opsi "pin = langsung jadi sticky note": buka jendelanya sekarang,
         // selagi klik pin masih dihitung sebagai gestur pengguna. Event ini
         // juga terpancing saat pindah halaman — di situ gestur sudah habis,
         // jadi dilewati diam-diam, bukan dianggap gagal.
-        if (
-          isAutoStickyOn() &&
-          canDetach &&
-          !detachedRef.current &&
-          hasUserActivation()
-        ) {
+        if (isAutoStickyOn() && canDetach && !detachedRef.current && hasUserActivation()) {
           void detach(false)
         }
       }, 30)
@@ -117,44 +98,19 @@ export function PinnedPopupHost() {
     window.addEventListener(PINNED_EVENT, onPinned)
     return () => window.removeEventListener(PINNED_EVENT, onPinned)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data])
-
-  /* Setelah reload: pulihkan popup pinned yang tertinggal. */
-  useEffect(() => {
-    adopt()
-    // Sengaja sekali per mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /* Target menghilang dari data (dihapus / di-unpin dari halaman lain) ->
-     tutup popup. Data berubah juga berarti isi/kolor diedit di host. */
-  useEffect(() => {
-    if (!target) return
-    if (target.kind === 'note') {
-      const note = data.notes.find((n) => n.id === target.note.id)
-      if (!note || !note.pinned) setTarget(null)
-      else if (note !== target.note) setTarget({ ...target, note })
-    } else {
-      const project = data.projects.find((p) => p.id === target.projectId)
-      const building = project?.buildings.find((b) => b.id === target.buildingId)
-      const task = building?.tasks.find((x) => x.id === target.task.id)
-      if (!project || !building || !task || !task.pinned) {
-        setTarget(null)
-      } else if (task !== target.task) {
-        setTarget({ ...target, task, label: `${project.name} · ${building.name}` })
-      }
-    }
-  }, [data, target])
-
-  /* Buka jendela sticky untuk popup yang sedang aktif. `announce` = beri
+  /* Buka jendela sticky untuk popup yang sedang menempel. `announce` = beri
      tahu user kalau browser memblokir jendelanya (hanya untuk klik tombol,
      bukan untuk pembukaan otomatis). */
   const detach = async (announce: boolean) => {
     if (detachedRef.current) return
+    const list = targetsRef.current
     const handle = await openDetachedWindow({
-      width: boundsRef.current.width ?? 420,
-      height: boundsRef.current.height ?? 520,
-      title: titleRef.current || t('app.name'),
+      width: 420,
+      // Dua catatan ditumpuk dalam satu jendela -> jendelanya lebih tinggi.
+      height: list.length > 1 ? 720 : 520,
+      title: windowTitle(list, t('app.name')),
       onClose: () => setDetached(null),
     })
     if (!handle) {
@@ -165,44 +121,44 @@ export function PinnedPopupHost() {
     setDetached(handle)
   }
 
-  /* Popup hilang (di-unpin atau dihapus dari halaman lain) -> jendela
-     sticky-nya ikut ditutup, jangan ditinggal menggantung. */
+  /* Tidak ada lagi yang menempel -> jendela sticky ikut ditutup. */
   useEffect(() => {
-    if (!target && detachedRef.current) {
+    if (targets.length === 0 && detachedRef.current) {
       detachedRef.current.close()
       setDetached(null)
     }
-  }, [target])
+  }, [targets])
 
   /* Host dilepas (logout / tab ditutup) -> tutup jendela sticky juga. */
   useEffect(() => () => detachedRef.current?.close(), [])
 
-  /* Judul jendela sticky mengikuti judul catatan yang sedang dibuka. */
+  /* Judul & tinggi jendela mengikuti isi yang sedang ditempel. */
   useEffect(() => {
-    if (!detached || !target) return
-    const title = target.kind === 'note' ? target.note.title : target.task.title
+    if (!detached || targets.length === 0) return
     try {
-      detached.win.document.title = title.trim() || t('app.name')
+      detached.win.document.title = windowTitle(targets, t('app.name'))
+      // Catatan kedua menempel setelah jendela terbuka -> beri ruang.
+      if (targets.length > 1 && detached.win.innerHeight < 640) {
+        detached.win.resizeTo(detached.win.outerWidth, 720)
+      }
     } catch {
       /* jendela keburu ditutup */
     }
-  }, [detached, target, t])
+  }, [detached, targets, t])
 
-  if (!target) return null
+  if (targets.length === 0) return null
 
-  const close = () => {
-    removeRaw('pinnedPopup')
-    detachedRef.current?.close()
-    setDetached(null)
-    setTarget(null)
-    // Beri tahu aplikasi bahwa popup pinned sudah tidak ada (mis. untuk
-    // membersihkan state halaman yang menyimpan jejak restore).
-    setTick((x) => x + 1)
+  const close = (key: string) => {
+    removePinnedPopup(key)
+    setRev((x) => x + 1)
+    // CATATAN: jangan paksa popup lain me-mount ulang di sini. Popup yang
+    // di-mount ulang langsung menulis ulang record-nya, dan itu pernah
+    // "menghidupkan kembali" popup yang baru saja ditutup.
   }
 
-  /* Tombol sticky note di header popup: lepas catatan ke jendela sendiri,
-     atau kembalikan ke halaman. Dipanggil LANGSUNG dari klik karena baik
-     Document PiP maupun window.open mensyaratkan gestur pengguna. */
+  /* Tombol sticky note di header popup: lepas SEMUA yang menempel ke jendela
+     sendiri, atau kembalikan ke halaman. Dipanggil LANGSUNG dari klik karena
+     baik Document PiP maupun window.open mensyaratkan gestur pengguna. */
   const toggleDetached = () => {
     if (detachedRef.current) {
       detachedRef.current.close()
@@ -212,7 +168,7 @@ export function PinnedPopupHost() {
     void detach(true)
   }
 
-  /* Prop yang sama untuk popup catatan maupun task. */
+  /* Prop yang sama untuk semua popup. */
   const windowProps = {
     onPipRequest: canDetach ? toggleDetached : undefined,
     detached: detached !== null,
@@ -220,71 +176,118 @@ export function PinnedPopupHost() {
   }
   const modeKey = detached ? 'win' : 'page'
 
-  if (target.kind === 'note') {
-    const { note, bounds } = target
-    return (
-      <TaskNoteModal
-        key={`pin-${note.id}-${tick}-${modeKey}`}
-        {...windowProps}
-        open
-        initial={{
-          title: note.title,
-          html: note.body,
-          pinned: note.pinned,
-          color: note.color,
-          dueDate: null,
-          archived: note.archived,
-          collaborators: note.collaborators ?? [],
-        }}
-        editedAt={note.updatedAt}
-        persistKey={`note:${note.id}`}
-        initialBounds={bounds}
-        onChange={(draft: TaskNoteDraft) =>
-          updateNote(note.id, {
-            title: draft.title,
-            body: draft.html,
-            pinned: draft.pinned,
-            color: draft.color,
-            collaborators: draft.collaborators ?? [],
-            archived: draft.archived,
-          })
-        }
-        onClose={close}
-      />
-    )
+  return (
+    <>
+      {targets.map((target) =>
+        target.kind === 'note' ? (
+          <TaskNoteModal
+            key={`pin-${target.key}-${modeKey}`}
+            {...windowProps}
+            open
+            initial={{
+              title: target.note.title,
+              html: target.note.body,
+              pinned: target.note.pinned,
+              color: target.note.color,
+              dueDate: null,
+              archived: target.note.archived,
+              collaborators: target.note.collaborators ?? [],
+            }}
+            editedAt={target.note.updatedAt}
+            persistKey={target.key}
+            initialBounds={target.bounds}
+            slot={target.slot}
+            onChange={(draft: TaskNoteDraft) =>
+              updateNote(target.note.id, {
+                title: draft.title,
+                body: draft.html,
+                pinned: draft.pinned,
+                color: draft.color,
+                collaborators: draft.collaborators ?? [],
+                archived: draft.archived,
+              })
+            }
+            onClose={() => close(target.key)}
+          />
+        ) : (
+          <TaskNoteModal
+            key={`pin-${target.key}-${modeKey}`}
+            {...windowProps}
+            open
+            initial={{
+              title: target.task.title,
+              html: target.task.description,
+              pinned: target.task.pinned ?? false,
+              color: target.task.color ?? null,
+              dueDate: target.task.dueDate,
+              archived: target.task.archived ?? false,
+              collaborators: target.task.collaborators ?? [],
+            }}
+            editedAt={target.task.updatedAt}
+            locationLabel={target.label}
+            persistKey={target.key}
+            initialBounds={target.bounds}
+            slot={target.slot}
+            onChange={(draft: TaskNoteDraft) =>
+              updateTask({ projectId: target.projectId, buildingId: target.buildingId }, target.task.id, {
+                title: draft.title,
+                description: draft.html,
+                pinned: draft.pinned,
+                color: draft.color,
+                collaborators: draft.collaborators ?? [],
+                dueDate: draft.dueDate,
+                archived: draft.archived,
+              })
+            }
+            onClose={() => close(target.key)}
+          />
+        ),
+      )}
+    </>
+  )
+}
+
+/** Cari note/task milik satu record; null kalau sudah hilang atau tidak pinned. */
+function resolve(record: PinnedRecord, data: AppData): PinnedTarget | null {
+  const bounds: PopupBounds = {
+    pos: record.pos ?? undefined,
+    width: record.width ?? undefined,
+    height: record.height ?? undefined,
   }
 
-  const { task, label, bounds } = target
-  return (
-    <TaskNoteModal
-      key={`pin-${task.id}-${tick}-${modeKey}`}
-      {...windowProps}
-      open
-      initial={{
-        title: task.title,
-        html: task.description,
-        pinned: task.pinned ?? false,
-        color: task.color ?? null,
-        dueDate: task.dueDate,
-        archived: task.archived ?? false,
-        collaborators: task.collaborators ?? [],
-      }}
-      editedAt={task.updatedAt}
-      locationLabel={label}
-      persistKey={`task:${task.id}`}
-      initialBounds={bounds}
-      onChange={(draft: TaskNoteDraft) =>
-        updateTask({ projectId: target.projectId, buildingId: target.buildingId }, task.id, {
-          title: draft.title,
-          description: draft.html,
-          pinned: draft.pinned,
-          color: draft.color,
-          collaborators: draft.collaborators ?? [],
-          dueDate: draft.dueDate,
-          archived: draft.archived,
-        })
+  if (record.key.startsWith('note:')) {
+    const note = data.notes.find((n) => n.id === record.key.slice(5))
+    if (!note || !note.pinned) return null
+    return { kind: 'note', key: record.key, slot: record.slot, bounds, note }
+  }
+
+  if (record.key.startsWith('task:')) {
+    const taskId = record.key.slice(5)
+    for (const project of data.projects) {
+      for (const building of project.buildings) {
+        const task = building.tasks.find((x) => x.id === taskId)
+        if (task) {
+          if (!task.pinned) return null
+          return {
+            kind: 'task',
+            key: record.key,
+            slot: record.slot,
+            bounds,
+            projectId: project.id,
+            buildingId: building.id,
+            task,
+            label: `${project.name} · ${building.name}`,
+          }
+        }
       }
-      onClose={close}
-    />
-  )
+    }
+  }
+  return null
+}
+
+function windowTitle(targets: PinnedTarget[], fallback: string): string {
+  const names = targets
+    .map((x) => (x.kind === 'note' ? x.note.title : x.task.title).trim())
+    .filter(Boolean)
+  return names.length > 0 ? names.join(' · ') : fallback
 }

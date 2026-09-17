@@ -337,6 +337,7 @@ export const en: Dict = {
     stickyHint: 'The sticky-note window stays on top of other apps — the note keeps showing even when the browser is minimised or covered by Excel/AutoCAD. You can also open it manually from the sticky-note button in the popup corner.',
     stickyHintFallback: 'This browser has no "always on top" window, so the note opens as a plain separate window. Use a recent Chrome or Edge to make it float above other apps.',
     stickyUnsupported: 'This browser cannot open the note in a separate window.',
+    stickyMax: 'At most two notes stick at a time — one top slot, one bottom slot. A third pin replaces the one that has been stuck the longest (the note itself stays pinned in the list).',
     theme: 'Theme',
     themeLight: 'Light',
     themeDark: 'Dark',

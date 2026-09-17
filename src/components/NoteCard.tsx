@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { cx } from '@/lib/utils'
+import { cx, inkStyleFor } from '@/lib/utils'
 import { CheckIcon, PinIcon } from '@/components/icons'
 import { RichText } from '@/components/RichText'
 
@@ -38,7 +38,9 @@ export function NoteCard({
           onOpen()
         }
       }}
-      style={color ? { backgroundColor: color } : undefined}
+      // Kartu berwarna memakai tinta yang kontras dengan warnanya sendiri,
+      // bukan tinta tema (di tema gelap teks putih di atas kuning tak terbaca).
+      style={color ? { backgroundColor: color, ...inkStyleFor(color) } : undefined}
       className={cx(
         'note-card group relative flex w-full cursor-pointer flex-col gap-2 rounded-2xl border p-4 text-left',
         'border-black/5 bg-white shadow-[0_1px_3px_rgb(0_0_0/0.08)] outline-none',
