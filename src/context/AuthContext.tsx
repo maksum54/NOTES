@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { readJSON, removeRaw, writeJSON } from '@/lib/storage'
-import { GOOGLE_CLIENT_ID, connectDrive, disconnectDrive, isDriveConfigured, wasEverConnected } from '@/lib/drive'
+import { GOOGLE_CLIENT_ID, connectDrive, forgetDriveSession, isDriveConfigured } from '@/lib/drive'
 
 /* ============================================================
    MODE LOGIN
@@ -83,9 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     if (!isDriveConfigured()) throw new Error('google-not-configured')
-    // Pertama kali (belum pernah setujui Drive): tampilkan consent.
-    // Login berikutnya: tersambung otomatis secara senyap, tanpa popup.
-    await connectDrive(!wasEverConnected())
+    // connectDrive sendiri sudah meminta token SENYAP dulu kalau izinnya
+    // pernah diberikan, dan baru menampilkan consent bila senyapnya gagal.
+    // (Dulu di sini dikirim interactive=false untuk login berikutnya, yang
+    // justru membuat login GAGAL total begitu sesi Google habis — bukannya
+    // jatuh ke layar consent.)
+    await connectDrive(true)
     const profile = await fetchGoogleProfile()
     setAccount({
       mode: 'google',
@@ -130,7 +133,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     // Data project & standard sengaja TIDAK dihapus di sini — logout bukan reset.
-    if (account?.mode === 'google') await disconnectDrive().catch(() => undefined)
+    // Logout hanya melupakan sesi Drive di perangkat ini. Izin Google TIDAK
+    // dicabut, supaya login berikutnya tersambung sendiri tanpa consent lagi.
+    if (account?.mode === 'google') forgetDriveSession()
     sessionStorage.removeItem(SESSION_KEY)
     setAccount(null)
     setLocked(false)

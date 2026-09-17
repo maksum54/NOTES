@@ -14,9 +14,10 @@ import {
 import { AI_DEFAULTS, getAiConfig, normalizeBaseUrl, setAiConfig, testConnection } from '@/lib/ai'
 import {
   backupToDrive, connectDrive, disconnectDrive, driveLastSync, isAutoSyncOn,
-  isDriveConfigured, isDriveConnected, restoreFromDrive, setAutoSync,
+  isDriveConfigured, restoreFromDrive, setAutoSync,
 } from '@/lib/drive'
 import { isAutoStickyOn, setAutoSticky, supportsAlwaysOnTop, supportsDetachedWindow } from '@/lib/detachedWindow'
+import { useDriveStatus } from '@/lib/useDriveStatus'
 import { clearAppStorage, storageBytes } from '@/lib/storage'
 import { downloadBlob, formatBytes, formatDateTime } from '@/lib/utils'
 import type { AppData } from '@/types'
@@ -35,7 +36,8 @@ export function SettingsPage() {
   const [aiNotice, setAiNotice] = useState<Notice>(null)
   const [testing, setTesting] = useState(false)
 
-  const [driveConnected, setDriveConnected] = useState(isDriveConnected)
+  /* Status Drive diikuti terus & disambungkan senyap bila izinnya sudah ada. */
+  const { status: driveStatus, connected: driveConnected, refresh: refreshDrive } = useDriveStatus()
   const [autoSync, setAutoSyncState] = useState(isAutoSyncOn)
   const [lastSync, setLastSync] = useState(driveLastSync)
   const [driveBusy, setDriveBusy] = useState<'sync' | 'backup' | 'restore' | 'connect' | null>(null)
@@ -82,7 +84,7 @@ export function SettingsPage() {
     setDriveNotice(null)
     try {
       await connectDrive(true)
-      setDriveConnected(true)
+      refreshDrive()
     } catch (err) {
       setDriveNotice({
         tone: 'danger',
@@ -298,7 +300,11 @@ export function SettingsPage() {
             title={t('settings.drive')}
             badge={
               <Badge tone={driveConnected ? 'ok' : 'neutral'}>
-                {driveConnected ? t('settings.driveConnected') : t('settings.driveNotConnected')}
+                {driveConnected
+                  ? t('settings.driveConnected')
+                  : driveStatus === 'connecting'
+                    ? t('storage.connecting')
+                    : t('settings.driveNotConnected')}
               </Badge>
             }
           />
@@ -315,7 +321,7 @@ export function SettingsPage() {
                   <GlassButton
                     variant="primary"
                     onClick={doConnect}
-                    loading={driveBusy === 'connect'}
+                    loading={driveBusy === 'connect' || driveStatus === 'connecting'}
                     icon={driveBusy !== 'connect' && <CloudIcon className="h-4 w-4" />}
                   >
                     {t('settings.driveConnect')}
@@ -350,7 +356,7 @@ export function SettingsPage() {
                       variant="ghost"
                       onClick={async () => {
                         await disconnectDrive()
-                        setDriveConnected(false)
+                        refreshDrive()
                       }}
                     >
                       {t('settings.driveDisconnect')}
