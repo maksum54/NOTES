@@ -18,6 +18,8 @@ const KEYS = {
   driveLastSync: 'notes.drive.lastSync',
   driveAuto: 'notes.drive.auto',
   driveEverConnected: 'notes.drive.everConnected',
+  /** User menekan "Putuskan": jangan sambungkan otomatis lagi. */
+  driveOptOut: 'notes.drive.optOut',
   assistantChat: 'notes.assistant.chat',
   installDismissed: 'notes.install.dismissed',
   /** Record tunggal versi lama — hanya dibaca untuk migrasi. */

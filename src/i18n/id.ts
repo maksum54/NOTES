@@ -106,6 +106,7 @@ export const id = {
     notFound: 'Canvas tidak ditemukan.',
   },
   storage: {
+    connecting: 'Menyambungkan ke Google Drive…',
     title: 'Storage',
     subtitle: 'Penyimpanan pribadi di Google Drive Anda — upload & unduh file apa saja.',
     upload: 'Upload File',
