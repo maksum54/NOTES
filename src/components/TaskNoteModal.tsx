@@ -9,8 +9,8 @@ import {
 import { GlassButton } from '@/components/glass/Glass'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
-import { removeRaw, writeRaw } from '@/lib/storage'
-import { formatDateTime } from '@/lib/utils'
+import { removePinnedPopup, upsertPinnedPopup, type PinSlot } from '@/lib/pinnedPopups'
+import { formatDateTime, inkStyleFor } from '@/lib/utils'
 
 /**
  * Pop-up editor catatan/task ala Google Keep:
@@ -58,6 +58,9 @@ interface TaskNoteModalProps {
   persistKey?: string
   /** Posisi & ukuran terakhir (hasil restore). */
   initialBounds?: PopupBounds
+  /** Slot tempel popup: 'top' menempel di kanan-atas, 'bottom' di kanan-bawah
+   *  (dipakai juga sebagai urutan tumpukan di jendela sticky). */
+  slot?: PinSlot
   /** Dipanggil saat popup baru saja di-pin — halaman boleh menyerahkan
    *  popup ke host global (PinnedPopupHost) supaya tetap hidup saat pindah halaman. */
   onPinned?: () => void
@@ -73,7 +76,7 @@ interface TaskNoteModalProps {
 
 export function TaskNoteModal({
   open, initial, editedAt, onChange, onClose, onArchive, onDelete, locationLabel,
-  persistKey, initialBounds, onPinned, onPipRequest, detached = false, portalContainer,
+  persistKey, initialBounds, slot = 'bottom', onPinned, onPipRequest, detached = false, portalContainer,
 }: TaskNoteModalProps) {
   const { t, lang } = useLang()
   const { data } = useData()
@@ -101,7 +104,7 @@ export function TaskNoteModal({
   /** Tutup sungguhan: bersihkan jejak popup pinned lalu tutup. Unmount karena
    *  pindah halaman TIDAK lewat sini — jejaknya justru diserahkan ke host. */
   const requestClose = () => {
-    if (persistKey && draft.pinned) removeRaw('pinnedPopup')
+    if (persistKey && draft.pinned) removePinnedPopup(persistKey)
     onClose()
   }
 
@@ -566,12 +569,12 @@ export function TaskNoteModal({
   useEffect(() => {
     if (!open || !persistKey) return
     if (!draft.pinned) {
-      if (wasPinned.current) removeRaw('pinnedPopup')
+      if (wasPinned.current) removePinnedPopup(persistKey)
       wasPinned.current = false
       return
     }
     wasPinned.current = true
-    writeRaw('pinnedPopup', JSON.stringify({ key: persistKey, pos, width, height }))
+    upsertPinnedPopup(persistKey, { pos, width, height })
   }, [open, persistKey, draft.pinned, pos, width, height])
   /* Modal dibongkar selagi melayang (mis. user pindah halaman) — serahkan
      popup ke host global, jangan biarkan hilang. */
@@ -588,7 +591,7 @@ export function TaskNoteModal({
     const vp0 = viewport()
     const start = pos ?? {
       x: Math.max(8, vp0.w - (rect?.width ?? 430) - 16),
-      y: Math.max(8, vp0.h - (rect?.height ?? 480) - 16),
+      y: slot === 'top' ? 16 : Math.max(8, vp0.h - (rect?.height ?? 480) - 16),
     }
     const onMove = (ev: PointerEvent) => {
       const vp = viewport()
@@ -621,14 +624,14 @@ export function TaskNoteModal({
       style={
         detached
           ? {
-              ...(draft.color ? { backgroundColor: draft.color } : null),
+              ...(draft.color ? { backgroundColor: draft.color, ...inkStyleFor(draft.color) } : null),
               width: '100%',
               height: '100%',
               maxWidth: '100%',
               maxHeight: '100%',
             }
           : {
-              ...(draft.color ? { backgroundColor: draft.color } : null),
+              ...(draft.color ? { backgroundColor: draft.color, ...inkStyleFor(draft.color) } : null),
               width: floating ? (width ? `${width}px` : 'min(92vw, 430px)') : width ? `${width}px` : undefined,
               maxWidth: floating ? '92vw' : 'min(92vw, 1080px)',
               height: height ? `${height}px` : undefined,
@@ -1021,20 +1024,26 @@ export function TaskNoteModal({
   return createPortal(
     <div
       className={cx(
-        'fixed',
+        // Di jendela sticky popup ikut mengalir dalam kolom (dua catatan
+        // ditumpuk atas–bawah), di halaman tetap melayang/modal.
         detached
-          ? 'inset-0 z-[130] flex'
+          ? 'relative flex min-h-0 flex-1'
           : floating
-            ? 'z-[130]'
-            : 'inset-0 z-[110] flex items-start justify-center p-4 sm:items-center',
+            ? 'fixed z-[130]'
+            : 'fixed inset-0 z-[110] flex items-start justify-center p-4 sm:items-center',
       )}
       style={
         detached
-          ? undefined
+          ? // Urutan tumpukan di jendela sticky ditentukan slot, BUKAN urutan
+            // masuknya ke DOM: portal menambahkan popup baru di paling akhir,
+            // jadi tanpa ini catatan slot atas bisa muncul di bawah.
+            { order: slot === 'top' ? 0 : 1 }
           : floating
             ? pos
               ? { left: pos.x, top: pos.y }
-              : { right: 16, bottom: 16 }
+              : slot === 'top'
+                ? { right: 16, top: 16 }
+                : { right: 16, bottom: 16 }
             : undefined
       }
     >
@@ -1068,7 +1077,7 @@ function PopPanel({
       <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden="true" />
       <div
         className={cx(
-          'absolute bottom-14 z-30 rounded-2xl border border-black/10 bg-white py-1 shadow-2xl dark:border-white/15 dark:bg-[#2a2d36]',
+          'ink-theme absolute bottom-14 z-30 rounded-2xl border border-black/10 bg-white py-1 shadow-2xl dark:border-white/15 dark:bg-[#2a2d36]',
           align === 'left' ? 'left-2' : 'right-2',
           // Lebar adaptif: muat penuh di layar sempit, pas isi di layar lebar.
           wide

@@ -114,7 +114,10 @@ export async function openDetachedWindow({
   const base = doc.createElement('style')
   base.textContent = [
     'html,body{height:100%;margin:0;overflow:hidden;background:rgb(var(--page-1));}',
-    '.notes-detached-root{position:relative;height:100%;}',
+    // Kolom: satu catatan mengisi penuh, dua catatan ditumpuk atas-bawah
+    // dengan garis rambut (gap 1px memperlihatkan latar kolom) sebagai batas.
+    '.notes-detached-root{display:flex;flex-direction:column;height:100%;gap:1px;',
+    'background:rgb(var(--ink-faint) / 0.35);}',
   ].join('\n')
   doc.head.appendChild(base)
 

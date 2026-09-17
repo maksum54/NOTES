@@ -39,7 +39,7 @@ NAMA PROJECT → NAMA BUILDING   (nama bebas diketik sendiri)
 | **Import Excel** | `.xlsx` / `.xls` / `.csv` → catatan standard, dengan pengenalan nama kolom yang toleran (ID & EN) |
 | **Papan coretan** | Coret-coret di atas gambar seperti papan tulis: pena, stabilo, teks, penghapus. Koordinat ternormalisasi jadi tetap presisi di HP maupun PC |
 | **Warning** | Notifikasi di HP & PC saat AI menemukan penyimpangan atau target submit mendekat/lewat |
-| **Sticky note mengambang** | Catatan/task yang di-pin bisa dilepas jadi JENDELA sendiri yang selalu tampil di atas aplikasi lain (Document Picture-in-Picture) — tetap terlihat walau browser di-minimize |
+| **Sticky note mengambang** | Sampai DUA catatan/task bisa menempel sekaligus (slot atas & bawah), dan keduanya bisa dilepas jadi JENDELA sendiri yang selalu tampil di atas aplikasi lain (Document Picture-in-Picture) — tetap terlihat walau browser di-minimize |
 | **Offline-first** | localStorage-primary + service worker; app tetap jalan penuh tanpa internet |
 
 ## Menjalankan
@@ -115,7 +115,8 @@ src/
 ├── features/
 │   └── whiteboard/   Papan coretan di atas gambar
 ├── i18n/             Dictionary id.ts & en.ts
-├── lib/              storage, ai (vikey), drive, excel, notify, detachedWindow, utils
+├── lib/              storage, ai (vikey), drive, excel, notify,
+│                     detachedWindow, pinnedPopups, utils
 ├── pages/            Login, Dashboard, Projects, ProjectDetail,
 │                     BuildingDetail, TaskDetail, Standards, Warnings,
 │                     Assistant, Settings
@@ -129,6 +130,18 @@ src/
 - **Backup otomatis di-debounce 4 detik**, jadi mengetik cepat tidak memicu puluhan upload.
 - **Gambar dikompres** (maks 1600px, JPEG q82) sebelum disimpan supaya localStorage tidak cepat penuh.
 - **Coretan disimpan sebagai koordinat 0..1**, bukan piksel, jadi tetap menempel presisi di ukuran layar apa pun.
+- **Maksimal dua sticky sekaligus.** Popup yang menempel disimpan sebagai
+  daftar dua slot (atas & bawah) di `lib/pinnedPopups.ts`, jadi catatan dan
+  task bisa menempel berdampingan tanpa saling menimpa. Pin ketiga mengambil
+  slot popup yang paling lama menempel; catatan itu sendiri tidak diubah —
+  statusnya tetap tersemat di halaman Catatan, hanya popup melayangnya yang
+  berhenti. Di jendela sticky keduanya ditumpuk atas–bawah dalam SATU jendela,
+  karena browser hanya mengizinkan satu jendela Picture-in-Picture per tab.
+- **Warna kartu menentukan warna teks, bukan tema.** Kartu/pop-up yang diberi
+  warna dari palet mengunci variabel `--ink` sesuai luminansi warnanya
+  (`inkStyleFor` di `lib/utils.ts`), supaya catatan kuning di tema gelap tidak
+  jadi teks putih di atas kuning. Panel yang punya latar sendiri di atasnya
+  (palet, menu) memakai kelas `.ink-theme` untuk menarik kembali tinta tema.
 - **Sticky note = jendela OS, bukan div.** Popup yang di-pin bisa dipindah ke
   jendela Document Picture-in-Picture (Chrome/Edge 116+) yang selalu di atas
   aplikasi lain, jadi catatan tetap terlihat saat browser di-minimize atau

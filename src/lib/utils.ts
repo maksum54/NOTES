@@ -100,3 +100,60 @@ export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: numb
     timer = setTimeout(() => fn(...args), ms)
   }
 }
+
+/* ============================================================
+   WARNA KARTU vs WARNA TEKS
+   Kartu/pop-up yang diberi warna dari palet memakai warna itu
+   sebagai latar, sementara warna teks ikut tema aplikasi. Di tema
+   gelap hasilnya teks hampir putih di atas kuning/pink — praktis
+   tidak terbaca. Jadi warna tinta ditentukan oleh LATAR KARTU-nya,
+   bukan oleh tema, lewat override variabel --ink di elemen itu.
+   ============================================================ */
+
+/** Triplet RGB variabel --ink untuk tema terang & gelap (lihat index.css). */
+const INK_ON_LIGHT = { ink: '18 24 40', soft: '78 88 112', faint: '132 142 166' }
+const INK_ON_DARK = { ink: '238 243 255', soft: '174 186 214', faint: '126 140 172' }
+
+/** Luminansi relatif ala WCAG; null kalau warnanya tidak terbaca. */
+export function colorLuminance(color: string): number | null {
+  const s = (color ?? '').trim().toLowerCase()
+  let rgb: [number, number, number] | null = null
+
+  if (s.startsWith('#')) {
+    const hex = s.slice(1)
+    const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex.slice(0, 6)
+    if (full.length !== 6 || /[^0-9a-f]/.test(full)) return null
+    rgb = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)) as [number, number, number]
+  } else {
+    const m = s.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/)
+    if (m) rgb = [Number(m[1]), Number(m[2]), Number(m[3])]
+  }
+  if (!rgb) return null
+
+  const lin = rgb.map((v) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+}
+
+/** Latar kartu ini tergolong terang? (palet Keep semuanya pastel/terang) */
+export function isLightSurface(color: string): boolean {
+  const l = colorLuminance(color)
+  return l === null ? true : l > 0.3
+}
+
+/**
+ * Style inline yang mengunci warna tinta pada satu kartu/pop-up berwarna:
+ * latar terang -> tinta gelap, latar gelap -> tinta terang, terlepas dari
+ * tema aplikasi. Semua turunannya ikut karena memakai `rgb(var(--ink))`.
+ */
+export function inkStyleFor(color: string | null | undefined): Record<string, string> | undefined {
+  if (!color) return undefined
+  const ink = isLightSurface(color) ? INK_ON_LIGHT : INK_ON_DARK
+  return {
+    '--ink': ink.ink,
+    '--ink-soft': ink.soft,
+    '--ink-faint': ink.faint,
+  }
+}

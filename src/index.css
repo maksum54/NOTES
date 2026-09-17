@@ -127,6 +127,22 @@
   .dark input[type='date']::-webkit-calendar-picker-indicator {
     --picker-invert: 1;
   }
+
+  /* Kartu/pop-up berwarna mengunci --ink agar kontras dengan warnanya
+     sendiri (lihat inkStyleFor di lib/utils). Panel yang punya latar
+     sendiri di atasnya (palet, menu) memakai kelas ini untuk MENARIK
+     KEMBALI tinta tema — kalau tidak, tinta gelap milik kartu kuning
+     ikut terbawa ke panel gelap dan hilang. */
+  .ink-theme {
+    --ink: 18 24 40;
+    --ink-soft: 78 88 112;
+    --ink-faint: 132 142 166;
+  }
+  .dark .ink-theme {
+    --ink: 238 243 255;
+    --ink-soft: 174 186 214;
+    --ink-faint: 126 140 172;
+  }
 }
 
 /* ============================================================

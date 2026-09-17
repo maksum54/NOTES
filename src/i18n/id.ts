@@ -335,6 +335,7 @@ export const id = {
     stickyHint: 'Jendela sticky note selalu tampil di atas aplikasi lain — catatan tetap terlihat walau browser di-minimize atau tertutup Excel/AutoCAD. Bisa juga dibuka manual lewat tombol sticky note di pojok popup.',
     stickyHintFallback: 'Browser ini belum mendukung jendela "selalu di atas", jadi catatan dibuka sebagai jendela terpisah biasa. Pakai Chrome atau Edge terbaru agar catatan bisa mengambang di atas aplikasi lain.',
     stickyUnsupported: 'Browser ini tidak bisa membuka catatan di jendela terpisah.',
+    stickyMax: 'Maksimal dua catatan menempel sekaligus — satu slot atas, satu slot bawah. Pin ketiga menggantikan popup yang paling lama menempel (catatannya sendiri tetap tersemat di daftar).',
     theme: 'Tema',
     themeLight: 'Terang',
     themeDark: 'Gelap',

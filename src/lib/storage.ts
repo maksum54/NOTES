@@ -20,7 +20,9 @@ const KEYS = {
   driveEverConnected: 'notes.drive.everConnected',
   assistantChat: 'notes.assistant.chat',
   installDismissed: 'notes.install.dismissed',
+  /** Record tunggal versi lama — hanya dibaca untuk migrasi. */
   pinnedPopup: 'notes.pinnedPopup',
+  pinnedPopups: 'notes.pinnedPopups',
   stickyAuto: 'notes.sticky.auto',
 } as const
 
