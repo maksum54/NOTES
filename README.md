@@ -137,6 +137,11 @@ src/
   statusnya tetap tersemat di halaman Catatan, hanya popup melayangnya yang
   berhenti. Di jendela sticky keduanya ditumpuk atas–bawah dalam SATU jendela,
   karena browser hanya mengizinkan satu jendela Picture-in-Picture per tab.
+- **Satu editor untuk task & catatan.** "Task Baru" di halaman building tidak
+  membuka form judul/deskripsi/tenggat, melainkan langsung membuat task kosong
+  lalu membuka pop-up editor ala Keep yang sama dengan "Catatan Baru" — judul,
+  rich text, warna, pengingat, checklist, gambar, sampai pin. Pin dari halaman
+  building juga ikut menempel (popup melayang), sama seperti halaman Task.
 - **Warna kartu menentukan warna teks, bukan tema.** Kartu/pop-up yang diberi
   warna dari palet mengunci variabel `--ink` sesuai luminansi warnanya
   (`inkStyleFor` di `lib/utils.ts`), supaya catatan kuning di tema gelap tidak

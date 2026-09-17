@@ -1,13 +1,11 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { findBuilding, useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
-import {
-  Badge, Field, GlassButton, GlassCard, GlassInput, GlassTextarea,
-} from '@/components/glass/Glass'
+import { Badge, Field, GlassButton, GlassCard, GlassInput } from '@/components/glass/Glass'
 import { NoteCard } from '@/components/NoteCard'
 import { TaskNoteModal } from '@/components/TaskNoteModal'
-import { ConfirmDialog, Modal } from '@/components/glass/Modal'
+import { ConfirmDialog } from '@/components/glass/Modal'
 import { Segmented } from '@/components/glass/Segmented'
 import { PageHeader } from '@/components/layout/PageHeader'
 import {
@@ -29,20 +27,21 @@ export function BuildingDetailPage() {
   const ids = useMemo(() => ({ projectId, buildingId }), [projectId, buildingId])
   const found = useMemo(() => findBuilding(data, ids), [data, ids])
 
-  const [taskOpen, setTaskOpen] = useState(false)
-  const [taskForm, setTaskForm] = useState({ title: '', description: '', dueDate: '' })
+  /* Task yang sedang dibuka di pop-up editor (id-nya, supaya isinya selalu
+     ikut data terbaru). */
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Task | null>(null)
 
   if (!found) return <Navigate to="/projects" replace />
   const { project, building } = found
   const left = daysUntil(building.targetSubmitDate)
 
-  const submitTask = (e: FormEvent) => {
-    e.preventDefault()
-    if (!taskForm.title.trim()) return
-    addTask(ids, { ...taskForm, dueDate: taskForm.dueDate || null })
-    setTaskForm({ title: '', description: '', dueDate: '' })
-    setTaskOpen(false)
+  /** Task baru = bikin task kosong lalu langsung buka pop-up editornya —
+   *  alurnya sama persis dengan "Catatan Baru" di halaman Catatan, bukan
+   *  form judul/deskripsi/tenggat yang terpisah. */
+  const createTask = () => {
+    const task = addTask(ids, { title: '', description: '', dueDate: null })
+    if (task) setEditingId(task.id)
   }
 
   return (
@@ -96,53 +95,12 @@ export function BuildingDetailPage() {
         {/* ---------- TASK (TUGAS) — kartu berslider, selalu membaca task terbaru ---------- */}
         <BuildingTaskSection
           rows={building.tasks.map((task) => ({ project, building, task }))}
-          onNew={() => setTaskOpen(true)}
+          editingId={editingId}
+          onEdit={setEditingId}
+          onNew={createTask}
           onDelete={setPendingDelete}
         />
       </div>
-
-      <Modal
-        open={taskOpen}
-        onClose={() => setTaskOpen(false)}
-        title={t('building.newTask')}
-        footer={
-          <>
-            <GlassButton variant="ghost" onClick={() => setTaskOpen(false)}>
-              {t('common.cancel')}
-            </GlassButton>
-            <GlassButton variant="primary" onClick={submitTask} disabled={!taskForm.title.trim()}>
-              {t('common.save')}
-            </GlassButton>
-          </>
-        }
-      >
-        <form onSubmit={submitTask} className="space-y-4">
-          <Field label={t('task.titleLabel')}>
-            <GlassInput
-              autoFocus
-              value={taskForm.title}
-              onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
-              placeholder={t('task.titlePlaceholder')}
-              required
-            />
-          </Field>
-          <Field label={`${t('common.description')} (${t('common.optional')})`}>
-            <GlassTextarea
-              value={taskForm.description}
-              onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
-              placeholder={t('task.descriptionPlaceholder')}
-              rows={3}
-            />
-          </Field>
-          <Field label={`${t('task.dueDate')} (${t('common.optional')})`}>
-            <GlassInput
-              type="date"
-              value={taskForm.dueDate}
-              onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
-            />
-          </Field>
-        </form>
-      </Modal>
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -169,11 +127,18 @@ interface TaskRow {
  * halaman Task. `rows` selalu diturunkan dari `building.tasks` terbaru,
  * jadi kartu ikut ter-update otomatis saat task berubah.
  */
-function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew: () => void; onDelete: (task: Task) => void }) {
+function BuildingTaskSection({
+  rows, editingId, onEdit, onNew, onDelete,
+}: {
+  rows: TaskRow[]
+  editingId: string | null
+  onEdit: (id: string | null) => void
+  onNew: () => void
+  onDelete: (task: Task) => void
+}) {
   const { t, lang } = useLang()
   const { toggleTask, updateTask } = useData()
   const [page, setPage] = useState(0)
-  const [editing, setEditing] = useState<TaskRow | null>(null)
   const [showArchived, setShowArchived] = useState(false)
   /* Task terarsip dipisah dari daftar aktif. */
   const active = rows.filter((r) => !r.task.archived)
@@ -183,9 +148,7 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
   const safePage = Math.min(page, pageCount - 1)
   const visible = shown.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
-  const modalRow: TaskRow | null = editing
-    ? { project: editing.project, building: editing.building, task: rows.find((r) => r.task.id === editing.task.id)?.task ?? editing.task }
-    : null
+  const modalRow: TaskRow | null = editingId ? rows.find((r) => r.task.id === editingId) ?? null : null
 
   return (
     <GlassCard>
@@ -288,7 +251,7 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
                     pinned: !row.task.pinned,
                   })
                 }
-                onOpen={() => setEditing(row)}
+                onOpen={() => onEdit(row.task.id)}
               />
             ))}
           </div>
@@ -315,6 +278,9 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
           }}
           editedAt={modalRow.task.updatedAt}
           locationLabel={`${modalRow.project.name} · ${modalRow.building.name}`}
+          // Tanpa persistKey, pin dari halaman ini cuma menandai task tanpa
+          // memunculkan popup menempel — beda dengan halaman Task & Catatan.
+          persistKey={`task:${modalRow.task.id}`}
           onChange={(draft) =>
             updateTask({ projectId: modalRow.project.id, buildingId: modalRow.building.id }, modalRow.task.id, {
               title: draft.title,
@@ -326,8 +292,8 @@ function BuildingTaskSection({ rows, onNew, onDelete }: { rows: TaskRow[]; onNew
               archived: draft.archived,
             })
           }
-          onClose={() => setEditing(null)}
-          onPinned={() => setEditing(null)}
+          onClose={() => onEdit(null)}
+          onPinned={() => onEdit(null)}
           onArchive={() => {}}
           onDelete={() => onDelete(modalRow.task)}
         />
