@@ -6,7 +6,7 @@ import { Badge, GlassButton, GlassCard } from '@/components/glass/Glass'
 import { NoteCard } from '@/components/NoteCard'
 import { TaskNoteModal, type TaskNoteDraft } from '@/components/TaskNoteModal'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { ArchiveIcon, CheckIcon, ClockIcon, TaskIcon } from '@/components/icons'
+import { ArchiveIcon, CheckIcon, ClockIcon, FolderIcon, TaskIcon } from '@/components/icons'
 import { cx, daysUntil, formatDate, formatDateTime } from '@/lib/utils'
 import type { Building, Project, Task } from '@/types'
 
@@ -75,6 +75,7 @@ export function TasksPage() {
         color: draft.color,
         collaborators: draft.collaborators ?? [],
         dueDate: draft.dueDate,
+        status: draft.done ? 'sudah' : 'belum',
         archived: draft.archived,
       },
     )
@@ -124,14 +125,15 @@ export function TasksPage() {
         />
         <TaskSection title={t('tasks.done')} tone="ok" rows={groups.done} emptyTitle={t('tasks.noDone')} onOpen={setEditing} onToggle={toggleTask} />
         {groups.archived.length > 0 && (
-          <TaskSection
-            title={t('task.archivedSection')}
-            tone="neutral"
+          <ArchiveSection
             rows={groups.archived}
-            emptyTitle={t('task.archivedEmpty')}
             onOpen={setEditing}
-            onToggle={toggleTask}
-            archived
+            onRestore={(row) =>
+              updateTask({ projectId: row.project.id, buildingId: row.building.id }, row.task.id, {
+                archived: false,
+                status: 'belum',
+              })
+            }
           />
         )}
       </div>
@@ -147,6 +149,7 @@ export function TasksPage() {
             pinned: modalRow.task.pinned ?? false,
             color: modalRow.task.color ?? null,
             dueDate: modalRow.task.dueDate,
+            done: modalRow.task.status === 'sudah',
             archived: modalRow.task.archived ?? false,
             collaborators: modalRow.task.collaborators ?? [],
           }}
@@ -179,7 +182,6 @@ function TaskSection({
   emptyHint,
   onOpen,
   onToggle,
-  archived = false,
 }: {
   title: string
   tone: 'warn' | 'ok' | 'neutral'
@@ -188,7 +190,6 @@ function TaskSection({
   emptyHint?: string
   onOpen: (row: TaskRow) => void
   onToggle: (ids: { projectId: string; buildingId: string }, taskId: string) => void
-  archived?: boolean
 }) {
   const { t, lang } = useLang()
   const [page, setPage] = useState(0)
@@ -199,11 +200,7 @@ function TaskSection({
   return (
     <GlassCard>
       <div className="mb-3 flex items-center gap-2">
-        {archived ? (
-          <ArchiveIcon className="h-[18px] w-[18px] text-ink-soft" />
-        ) : (
-          <TaskIcon className={cx('h-[18px] w-[18px]', tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : 'text-ink-soft')} />
-        )}
+        <TaskIcon className={cx('h-[18px] w-[18px]', tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : 'text-ink-soft')} />
         <h2 className="flex-1 text-[15px] font-bold text-ink">{title}</h2>
         <Badge tone={tone === 'neutral' ? 'neutral' : tone}>{rows.length}</Badge>
       </div>
@@ -235,9 +232,7 @@ function TaskSection({
                     {row.task.dueDate && (
                       <Badge
                         tone={
-                          !archived && row.task.status === 'belum' && (daysUntil(row.task.dueDate) ?? 1) < 0
-                            ? 'danger'
-                            : 'neutral'
+                          row.task.status === 'belum' && (daysUntil(row.task.dueDate) ?? 1) < 0 ? 'danger' : 'neutral'
                         }
                       >
                         {formatDate(row.task.dueDate, lang)}
@@ -264,6 +259,93 @@ function TaskSection({
         </>
       )}
       {emptyHint && rows.length === 0 && <p className="pb-4 text-center text-[12px] text-ink-faint">{emptyHint}</p>}
+    </GlassCard>
+  )
+}
+
+/**
+ * ARSIP — task yang sudah ditandai selesai dari pop-up, dikelompokkan
+ * per NAMA PROJECT supaya arsip lintas project tidak tercampur.
+ * Centang di kartu mengembalikan task ke daftar aktif (keluar dari arsip).
+ */
+function ArchiveSection({
+  rows,
+  onOpen,
+  onRestore,
+}: {
+  rows: TaskRow[]
+  onOpen: (row: TaskRow) => void
+  onRestore: (row: TaskRow) => void
+}) {
+  const { t, lang } = useLang()
+
+  /* Satu sub-blok per project, urut nama; urutan kartu di dalamnya ikut
+     urutan `rows` yang sudah disortir pemanggil. */
+  const groups = useMemo(() => {
+    const map = new Map<string, TaskRow[]>()
+    for (const row of rows) {
+      const list = map.get(row.project.id)
+      if (list) list.push(row)
+      else map.set(row.project.id, [row])
+    }
+    return [...map.values()].sort((a, b) => a[0].project.name.localeCompare(b[0].project.name))
+  }, [rows])
+
+  return (
+    <GlassCard>
+      <div className="mb-1 flex items-center gap-2">
+        <ArchiveIcon className="h-[18px] w-[18px] text-ink-soft" />
+        <h2 className="flex-1 text-[15px] font-bold text-ink">{t('task.archivedSection')}</h2>
+        <Badge tone="neutral">{rows.length}</Badge>
+      </div>
+      <p className="mb-3 text-[12px] text-ink-faint">{t('task.archivedHint')}</p>
+
+      <div className="space-y-5">
+        {groups.map((group) => (
+          <section key={group[0].project.id}>
+            <div className="mb-2 flex items-center gap-2 border-b border-black/5 pb-1.5 dark:border-white/10">
+              <FolderIcon className="h-4 w-4 shrink-0 text-ink-faint" />
+              <Link
+                to={`/projects/${group[0].project.id}`}
+                className="min-w-0 flex-1 truncate text-[13.5px] font-bold text-ink hover:text-accent hover:underline"
+              >
+                {group[0].project.name}
+              </Link>
+              <span className="shrink-0 rounded-pill bg-black/5 px-2 py-0.5 text-[11px] font-bold text-ink-faint dark:bg-white/10">
+                {group.length}
+              </span>
+            </div>
+
+            {/* Masonry ala Keep, sama dengan section lain. */}
+            <div className="columns-1 gap-3 sm:columns-2 lg:columns-3 xl:columns-5 [&>*]:mb-3 [&>*]:break-inside-avoid">
+              {group.map((row) => (
+                <NoteCard
+                  key={row.task.id}
+                  title={row.task.title}
+                  html={row.task.description}
+                  done
+                  color={row.task.color ?? undefined}
+                  meta={
+                    <>
+                      <Link
+                        to={`/projects/${row.project.id}/buildings/${row.building.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="truncate font-semibold text-accent hover:underline"
+                        title={row.building.name}
+                      >
+                        {row.building.name}
+                      </Link>
+                      {row.task.dueDate && <Badge tone="neutral">{formatDate(row.task.dueDate, lang)}</Badge>}
+                    </>
+                  }
+                  onToggleDone={() => onRestore(row)}
+                  onOpen={() => onOpen(row)}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
     </GlassCard>
   )
 }

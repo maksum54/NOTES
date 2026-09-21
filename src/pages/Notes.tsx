@@ -116,6 +116,8 @@ export function NotesPage() {
             pinned: editing.pinned,
             color: editing.color,
             dueDate: null,
+            // Catatan tak punya status sudah/belum: "selesai" = masuk arsip.
+            done: editing.archived,
             archived: editing.archived,
             collaborators: editing.collaborators ?? [],
           }}

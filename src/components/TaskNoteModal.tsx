@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { cx } from '@/lib/utils'
 import { FONT_SIZES, HIGHLIGHT_COLORS, TEXT_COLORS, sanitizeStrict } from '@/lib/richtext'
 import {
-  BellIcon, CheckboxIcon, ImageIcon, MoreIcon,
+  BellIcon, CheckIcon, CheckboxIcon, ImageIcon, MoreIcon,
   PaletteIcon, PinIcon, RedoIcon, UndoIcon, XIcon,
 } from '@/components/icons'
 import { GlassButton } from '@/components/glass/Glass'
@@ -28,6 +28,9 @@ export interface TaskNoteDraft {
   pinned: boolean
   color: string | null
   dueDate: string | null
+  /** Sudah selesai — dipetakan halaman pemanggil: task jadi status 'sudah',
+   *  catatan cukup masuk arsip. Selalu satu paket dengan `archived`. */
+  done: boolean
   archived: boolean
   /** Nama-nama kolaborator (sesama pengguna aplikasi). */
   collaborators?: string[]
@@ -109,6 +112,18 @@ export function TaskNoteModal({
   const requestClose = () => {
     if (persistKey && draft.pinned) removePinnedPopup(persistKey)
     onClose()
+  }
+
+  /** Tombol "Sudah selesai": tandai beres lalu pindahkan ke section Arsip
+   *  (selesai = terarsip, jadi hilang dari daftar aktif dalam satu klik).
+   *  Ditekan lagi saat sudah beres = kembali ke daftar aktif.
+   *  onChange dipanggil langsung, bukan lewat patch(), karena popup ditutup
+   *  di klik yang sama — updater setDraft bisa keburu dibuang saat unmount. */
+  const toggleDone = () => {
+    const next: TaskNoteDraft = { ...draft, done: !draft.done, archived: !draft.done }
+    setDraft(next)
+    onChange(next)
+    if (next.done) requestClose()
   }
 
   // Nilai masuk saat modal dibuka (bukan tiap render, agar kursor stabil).
@@ -1030,8 +1045,20 @@ export function TaskNoteModal({
             <RedoIcon className="h-[18px] w-[18px]" />
           </button>
           </div>
-          {/* Tutup di luar area scroll — selalu terlihat tanpa menggeser toolbar. */}
-          <GlassButton variant="ghost" size="sm" className="ml-auto shrink-0" onClick={requestClose}>
+          {/* Selesai & Tutup di luar area scroll — selalu terlihat tanpa
+              menggeser toolbar. */}
+          <GlassButton
+            variant={draft.done ? 'primary' : 'ghost'}
+            size="sm"
+            className="ml-auto shrink-0 gap-1.5"
+            title={draft.done ? t('task.reopenHint') : t('task.finishHint')}
+            icon={<CheckIcon className="h-4 w-4" />}
+            onClick={toggleDone}
+          >
+            {/* Di popup sempit cukup ikon centang, label ikut saat muat. */}
+            <span className="max-[380px]:hidden">{draft.done ? t('task.reopen') : t('task.finish')}</span>
+          </GlassButton>
+          <GlassButton variant="ghost" size="sm" className="shrink-0" onClick={requestClose}>
             {t('common.close')}
           </GlassButton>
         </div>
