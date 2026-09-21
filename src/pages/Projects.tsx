@@ -7,7 +7,7 @@ import { ConfirmDialog, Modal } from '@/components/glass/Modal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuildingIcon, ChevronRight, FolderIcon, PlusIcon, TrashIcon } from '@/components/icons'
 import { formatDate } from '@/lib/utils'
-import type { Project } from '@/types'
+import { taskProgress, type Project } from '@/types'
 
 export function ProjectsPage() {
   const { t, lang } = useLang()
@@ -52,8 +52,7 @@ export function ProjectsPage() {
       ) : (
         <div className="stack-fade grid gap-3 sm:grid-cols-2">
           {data.projects.map((project) => {
-            const tasks = project.buildings.flatMap((b) => b.tasks)
-            const done = tasks.filter((task) => task.status === 'sudah').length
+            const { done, total } = taskProgress(project.buildings.flatMap((b) => b.tasks))
             return (
               <GlassCard key={project.id} hover className="flex cursor-pointer flex-col gap-3" onClick={() => navigate(`/projects/${project.id}`)}>
                 <div className="flex items-start gap-3">
@@ -86,15 +85,15 @@ export function ProjectsPage() {
                   <Badge tone="neutral" icon={<BuildingIcon className="h-3 w-3" />}>
                     {t('projects.buildingCount', { n: project.buildings.length })}
                   </Badge>
-                  {tasks.length > 0 && (
-                    <Badge tone={done === tasks.length ? 'ok' : 'accent'}>
-                      {t('building.taskCount', { done, total: tasks.length })}
+                  {total > 0 && (
+                    <Badge tone={done === total ? 'ok' : 'accent'}>
+                      {t('building.taskCount', { done, total })}
                     </Badge>
                   )}
                 </div>
 
-                {tasks.length > 0 && (
-                  <ProgressBar value={(done / tasks.length) * 100} tone={done === tasks.length ? 'ok' : 'accent'} />
+                {total > 0 && (
+                  <ProgressBar value={(done / total) * 100} tone={done === total ? 'ok' : 'accent'} />
                 )}
 
                 <span className="mt-auto flex items-center gap-1 pt-1 text-[13px] font-semibold text-accent">

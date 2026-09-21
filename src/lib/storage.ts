@@ -1,4 +1,7 @@
-import { DATA_VERSION, emptyData, type AppData } from '@/types'
+import {
+  DATA_VERSION, emptyData, syncTargetSubmit,
+  type AppData, type Building, type Project, type Warning,
+} from '@/types'
 
 /**
  * Pola localStorage-primary: data utama hidup di perangkat, Google Drive
@@ -89,16 +92,56 @@ export function migrate(input: unknown): AppData {
     return { ...base, standards, updatedAt: new Date().toISOString() }
   }
 
+  const projects = normalizeProjects(d.projects)
+
   return {
     version: DATA_VERSION,
-    projects: Array.isArray(d.projects) ? d.projects : [],
+    projects,
     standards,
     notes: Array.isArray(d.notes) ? d.notes : [],
-    warnings: Array.isArray(d.warnings) ? d.warnings : [],
+    warnings: dropSettledDueWarnings(Array.isArray(d.warnings) ? d.warnings : [], projects),
     boards: Array.isArray(d.boards) ? d.boards : [],
     members: Array.isArray(d.members) ? d.members : [],
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : base.updatedAt,
   }
+}
+
+/**
+ * Data lama ikut aturan "target submit ikut task" sejak app dibuka: building
+ * yang semua tasknya sudah selesai/terarsip langsung berstatus 'sudah', jadi
+ * badge "Lewat tenggat"-nya tidak nyangkut sampai task berikutnya diubah.
+ */
+function normalizeProjects(input: unknown): Project[] {
+  if (!Array.isArray(input)) return []
+  return (input as Project[]).map((project) =>
+    Array.isArray(project?.buildings)
+      ? {
+          ...project,
+          buildings: project.buildings.map((b: Building) =>
+            Array.isArray(b?.tasks) ? syncTargetSubmit(b) : b,
+          ),
+        }
+      : project,
+  )
+}
+
+/**
+ * Warning "lewat tenggat" milik building yang target submitnya sudah beres
+ * tidak relevan lagi — dibuang sekalian saat data dimuat, supaya halaman
+ * Peringatan tidak menyisakan tenggat yang sebetulnya sudah selesai.
+ */
+function dropSettledDueWarnings(warnings: Warning[], projects: Project[]): Warning[] {
+  const settled = new Set<string>()
+  for (const project of projects) {
+    for (const building of project.buildings ?? []) {
+      if (building.targetSubmitStatus === 'sudah') settled.add(building.id)
+    }
+  }
+  if (settled.size === 0) return warnings
+  return warnings.filter((w) => {
+    if (typeof w?.dedupeKey !== 'string' || !w.dedupeKey.startsWith('due:')) return true
+    return !settled.has(w.dedupeKey.split(':')[1])
+  })
 }
 
 export function loadData(): AppData {
