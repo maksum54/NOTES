@@ -209,6 +209,7 @@ export const id = {
     recommendation: 'Rekomendasi',
     targetSubmit: 'Target Submit',
     targetSubmitDate: 'Tanggal target submit',
+    targetSubmitAuto: 'Ikut tenggat terdekat dari task yang belum selesai.',
     tasks: 'Task (Tugas)',
     taskCount: '{done}/{total} selesai',
     newTask: 'Task Baru',

@@ -292,21 +292,44 @@ export function taskProgress(tasks: Task[]): { done: number; total: number } {
 }
 
 /**
+ * Target submit yang diturunkan dari daftar task building:
+ *
+ * - STATUS: masih ada task menggantung -> 'belum', semua beres/terarsip -> 'sudah'.
+ * - TANGGAL: tenggat (pengingat) paling dekat dari task yang BELUM selesai —
+ *   tenggat yang dipasang di pop-up task itulah tanggal submit buildingnya.
+ *   Task yang sudah selesai/terarsip tidak lagi menarik tanggal, jadi kalau
+ *   ada beberapa task dengan tenggat berbeda, yang tampil selalu tenggat
+ *   terdekat dari sisa pekerjaan.
+ */
+export function targetSubmitFromTasks(building: Building): { status: DoneStatus; date: ISODate | null } {
+  const outstanding = outstandingTasks(building.tasks)
+  const due = outstanding
+    .map((task) => task.dueDate)
+    .filter((date): date is ISODate => !!date)
+    .sort()
+  return { status: outstanding.length > 0 ? 'belum' : 'sudah', date: due[0] ?? null }
+}
+
+/**
  * TARGET SUBMIT IKUT TASK.
  *
  * Selama masih ada task yang menggantung, target submit building itu 'belum'.
  * Begitu semua task selesai atau masuk Arsip, target submit otomatis 'sudah'
  * — badge "Lewat tenggat" di building, kartu project, daftar tenggat di
  * Beranda, dan warning tenggat semuanya ikut padam karena semua membaca
- * field yang sama.
+ * field yang sama. Tanggalnya pun ikut: begitu sebuah task diberi pengingat,
+ * tanggal itu naik jadi tanggal target submit buildingnya.
  *
- * Building yang belum punya task sama sekali tidak diutak-atik: di situ
- * target submit murni diatur manual lewat toggle Belum/Sudah.
+ * Tanggal manual hanya dipertahankan selama tidak ada task menggantung yang
+ * punya tenggat. Building yang belum punya task sama sekali tidak diutak-atik:
+ * di situ target submit murni diatur manual.
  */
 export function syncTargetSubmit(building: Building): Building {
   if (building.tasks.length === 0) return building
-  const status: DoneStatus = hasOutstandingTasks(building) ? 'belum' : 'sudah'
-  return status === building.targetSubmitStatus ? building : { ...building, targetSubmitStatus: status }
+  const { status, date } = targetSubmitFromTasks(building)
+  const targetSubmitDate = date ?? building.targetSubmitDate
+  if (status === building.targetSubmitStatus && targetSubmitDate === building.targetSubmitDate) return building
+  return { ...building, targetSubmitStatus: status, targetSubmitDate }
 }
 
 export const DATA_VERSION = 2

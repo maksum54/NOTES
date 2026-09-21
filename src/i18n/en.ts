@@ -211,6 +211,7 @@ export const en: Dict = {
     recommendation: 'Recommendation',
     targetSubmit: 'Submit Target',
     targetSubmitDate: 'Target submit date',
+    targetSubmitAuto: 'Follows the nearest due date among unfinished tasks.',
     tasks: 'Tasks',
     taskCount: '{done}/{total} done',
     newTask: 'New Task',

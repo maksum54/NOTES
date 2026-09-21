@@ -13,7 +13,10 @@ import {
   LinkIcon, PlusIcon, SparkIcon, TaskIcon,
 } from '@/components/icons'
 import { daysUntil, formatDate } from '@/lib/utils'
-import { isBlankTask, outstandingTasks, type Building, type DoneStatus, type Project, type Task } from '@/types'
+import {
+  isBlankTask, outstandingTasks, targetSubmitFromTasks,
+  type Building, type DoneStatus, type Project, type Task,
+} from '@/types'
 
 /**
  * Satu building: TARGET SUBMIT plus daftar TASK berbentuk kartu berslider
@@ -89,7 +92,12 @@ export function BuildingDetailPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t('building.targetSubmitDate')}>
+            <Field
+              label={t('building.targetSubmitDate')}
+              // Tanggal ikut pengingat task: beri tahu supaya user tidak bingung
+              // kalau isian manualnya tertimpa tenggat task terdekat.
+              hint={targetSubmitFromTasks(building).date ? t('building.targetSubmitAuto') : undefined}
+            >
               <GlassInput
                 type="date"
                 value={building.targetSubmitDate?.slice(0, 10) ?? ''}

@@ -10,8 +10,8 @@ import {
 } from 'react'
 import {
   emptyData,
-  hasOutstandingTasks,
   syncTargetSubmit,
+  targetSubmitFromTasks,
   type AiReview,
   type AppData,
   type Building,
@@ -139,14 +139,16 @@ function mapBuilding(data: AppData, ids: BuildingIds, fn: (b: Building) => Build
  * Bungkus perubahan daftar task supaya TARGET SUBMIT IKUT TASK: setelah
  * task berubah, status target submit building ikut disesuaikan.
  *
- * Penyesuaian hanya jalan kalau daftar task yang menggantung benar-benar
- * berubah — mengetik judul/isi task tidak boleh menimpa pilihan manual user
- * di toggle Belum/Sudah (popup menyimpan tiap ketikan).
+ * Penyesuaian hanya jalan kalau target submit turunan itu benar-benar berubah
+ * — entah status menggantungnya, entah tenggat terdekatnya. Mengetik judul/isi
+ * task tidak menimpa pilihan manual user (popup menyimpan tiap ketikan).
  */
 function withTaskSync(fn: (b: Building) => Building): (b: Building) => Building {
   return (b) => {
     const next = fn(b)
-    return hasOutstandingTasks(next) === hasOutstandingTasks(b) ? next : syncTargetSubmit(next)
+    const before = targetSubmitFromTasks(b)
+    const after = targetSubmitFromTasks(next)
+    return before.status === after.status && before.date === after.date ? next : syncTargetSubmit(next)
   }
 }
 
