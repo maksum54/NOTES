@@ -317,7 +317,7 @@ export const en: Dict = {
   },
   assistant: {
     title: 'AI Assistant',
-    subtitle: 'Ask anything — the AI reads your standard notes and project data as context.',
+    subtitle: 'Ask anything, on any topic — your standard notes and project data are used as context when relevant.',
     placeholder: 'e.g. Minimum cable size for a 250A load per PUIL?',
     empty: 'No conversation yet.',
     clear: 'Clear conversation',

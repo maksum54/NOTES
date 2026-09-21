@@ -315,7 +315,7 @@ export const id = {
   },
   assistant: {
     title: 'Asisten AI',
-    subtitle: 'Tanya apa saja — AI membaca catatan standard dan data project kamu sebagai konteks.',
+    subtitle: 'Tanya apa saja, bebas topik — catatan standard & data project dipakai sebagai konteks kalau nyambung.',
     placeholder: 'mis. Ukuran kabel minimum untuk beban 250A menurut PUIL?',
     empty: 'Belum ada percakapan.',
     clear: 'Bersihkan percakapan',

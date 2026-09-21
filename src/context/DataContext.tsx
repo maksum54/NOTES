@@ -26,7 +26,7 @@ import {
   type Task,
   type Warning,
 } from '@/types'
-import { loadData, migrate, saveData } from '@/lib/storage'
+import { loadData, migrate, pruneDueWarnings, saveData } from '@/lib/storage'
 import { daysUntil, nowISO, uid } from '@/lib/utils'
 import { reviewSummary, isAiReady } from '@/lib/ai'
 import { isAutoSyncOn, isDriveConnected, silentReconnect, syncMergeWithDrive } from '@/lib/drive'
@@ -148,14 +148,6 @@ function withTaskSync(fn: (b: Building) => Building): (b: Building) => Building 
     const next = fn(b)
     return hasOutstandingTasks(next) === hasOutstandingTasks(b) ? next : syncTargetSubmit(next)
   }
-}
-
-/** Warning tenggat building yang target submitnya sudah beres tidak relevan lagi. */
-function clearSettledWarnings(data: AppData, ids: BuildingIds): AppData {
-  const building = findBuilding(data, ids)?.building
-  if (!building || building.targetSubmitStatus !== 'sudah') return data
-  const warnings = data.warnings.filter((w) => !w.dedupeKey.startsWith(`due:${ids.buildingId}:`))
-  return warnings.length === data.warnings.length ? data : { ...data, warnings }
 }
 
 export function findBuilding(
@@ -280,8 +272,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reconnectedAt, runSync])
 
+  /* Tiap perubahan data sekalian membuang peringatan tenggat yang sudah
+     tidak berlaku (target submit beres, tanggal diganti, building dihapus). */
   const mutate = useCallback((fn: (prev: AppData) => AppData) => {
-    setData((prev) => ({ ...fn(prev), updatedAt: nowISO() }))
+    setData((prev) => pruneDueWarnings({ ...fn(prev), updatedAt: nowISO() }))
   }, [])
 
   /* Pemilik data juga masuk daftar anggota supaya bisa dipilih sebagai kolaborator. */
@@ -521,10 +515,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   /* ---------- task ---------- */
 
   /** Semua perubahan daftar task lewat sini: task disimpan, lalu status
-   *  target submit & warning tenggat building ikut disamakan. */
+   *  target submit building ikut disamakan (warning tenggat basi dibersihkan
+   *  oleh mutate). */
   const mutateTasks = useCallback(
     (ids: BuildingIds, fn: (b: Building) => Building) => {
-      mutate((prev) => clearSettledWarnings(mapBuilding(prev, ids, withTaskSync(fn)), ids))
+      mutate((prev) => mapBuilding(prev, ids, withTaskSync(fn)))
     },
     [mutate],
   )

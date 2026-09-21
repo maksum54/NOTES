@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
 import { GlassCard } from '@/components/glass/Glass'
@@ -6,7 +6,7 @@ import { NoteCard } from '@/components/NoteCard'
 import { TaskNoteModal, type TaskNoteDraft } from '@/components/TaskNoteModal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ArchiveIcon, PenIcon, PinIcon } from '@/components/icons'
-import type { Note } from '@/types'
+import { isBlankNote, type Note } from '@/types'
 
 /**
  * CATATAN — sticky note bebas ala Google Keep, terpisah dari task:
@@ -16,7 +16,9 @@ import type { Note } from '@/types'
  */
 export function NotesPage() {
   const { t } = useLang()
-  const { data, addNote, updateNote } = useData()
+  const { data, addNote, updateNote, deleteNote } = useData()
+  /* Catatan yang baru dibuat — dibuang lagi kalau ditutup tanpa diisi. */
+  const draftIdRef = useRef<string | null>(null)
 
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -41,7 +43,18 @@ export function NotesPage() {
   /** Buat note kosong lalu langsung buka pop-upnya. */
   const createNote = () => {
     const note = addNote({ title: '', body: '' })
+    draftIdRef.current = note.id
     setEditingId(note.id)
+  }
+
+  /** Tutup pop-up; catatan baru yang ditutup tanpa diisi dibuang lagi. */
+  const closeEditor = () => {
+    const draftId = draftIdRef.current
+    draftIdRef.current = null
+    setEditingId(null)
+    if (!draftId) return
+    const draft = data.notes.find((note) => note.id === draftId)
+    if (draft && !draft.pinned && isBlankNote(draft)) deleteNote(draftId)
   }
 
   /** Simpan perubahan dari pop-up — note di-refresh otomatis lewat store. */
@@ -124,8 +137,12 @@ export function NotesPage() {
           editedAt={editing.updatedAt}
           persistKey={`note:${editing.id}`}
           onChange={saveEdit}
-          onClose={() => setEditingId(null)}
-          onPinned={() => setEditingId(null)}
+          onClose={closeEditor}
+          onPinned={() => {
+            // Catatan yang di-pin pindah ke host global, bukan ditutup-buang.
+            draftIdRef.current = null
+            setEditingId(null)
+          }}
         />
       )}
     </>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { findBuilding, useData } from '@/context/DataContext'
 import { useLang } from '@/context/LangContext'
@@ -13,7 +13,7 @@ import {
   LinkIcon, PlusIcon, SparkIcon, TaskIcon,
 } from '@/components/icons'
 import { daysUntil, formatDate } from '@/lib/utils'
-import { outstandingTasks, type Building, type DoneStatus, type Project, type Task } from '@/types'
+import { isBlankTask, outstandingTasks, type Building, type DoneStatus, type Project, type Task } from '@/types'
 
 /**
  * Satu building: TARGET SUBMIT plus daftar TASK berbentuk kartu berslider
@@ -23,6 +23,8 @@ export function BuildingDetailPage() {
   const { projectId = '', buildingId = '' } = useParams()
   const { t } = useLang()
   const { data, updateBuilding, addTask, deleteTask } = useData()
+  /* Task yang baru dibuat lewat "Task Baru" — dibuang lagi kalau ditutup kosong. */
+  const draftIdRef = useRef<string | null>(null)
 
   const ids = useMemo(() => ({ projectId, buildingId }), [projectId, buildingId])
   const found = useMemo(() => findBuilding(data, ids), [data, ids])
@@ -41,7 +43,23 @@ export function BuildingDetailPage() {
    *  form judul/deskripsi/tenggat yang terpisah. */
   const createTask = () => {
     const task = addTask(ids, { title: '', description: '', dueDate: null })
-    if (task) setEditingId(task.id)
+    if (!task) return
+    draftIdRef.current = task.id
+    setEditingId(task.id)
+  }
+
+  /** Tutup editor. Task yang baru dibuat lalu ditutup tanpa diisi sama sekali
+   *  dibuang — tombol "Task Baru" yang tidak jadi dipakai tidak meninggalkan
+   *  kartu kosong. Task yang sudah ada (walau isinya dikosongkan) tidak
+   *  disentuh, begitu juga yang keburu di-pin. */
+  const closeEditor = (id: string | null) => {
+    setEditingId(id)
+    if (id !== null) return
+    const draftId = draftIdRef.current
+    draftIdRef.current = null
+    if (!draftId) return
+    const draft = building.tasks.find((task) => task.id === draftId)
+    if (draft && !draft.pinned && isBlankTask(draft)) deleteTask(ids, draftId)
   }
 
   return (
@@ -96,7 +114,7 @@ export function BuildingDetailPage() {
         <BuildingTaskSection
           rows={building.tasks.map((task) => ({ project, building, task }))}
           editingId={editingId}
-          onEdit={setEditingId}
+          onEdit={closeEditor}
           onNew={createTask}
           onDelete={setPendingDelete}
         />
