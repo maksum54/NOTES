@@ -42,6 +42,9 @@ export interface PopupBounds {
 /** Event internal: ada popup pinned yang perlu diambil alih host global. */
 export const PINNED_EVENT = 'notes:pinned-popup'
 
+/** Tinggi terkecil popup saat ditarik (judul + sebaris teks + toolbar). */
+const MIN_POPUP_H = 240
+
 interface TaskNoteModalProps {
   open: boolean
   initial: TaskNoteDraft
@@ -523,6 +526,7 @@ export function TaskNoteModal({
   const startResize = (e: React.PointerEvent<HTMLDivElement>, side: 'left' | 'right') => {
     e.preventDefault()
     e.stopPropagation()
+    e.currentTarget.setPointerCapture?.(e.pointerId)
     const startX = e.clientX
     const vp = viewport()
     const startW = width ?? (vp.w < 640 ? vp.w - 32 : 576)
@@ -539,15 +543,30 @@ export function TaskNoteModal({
     ownerWin().addEventListener('pointerup', onUp)
   }
 
-  /* Tarik tepi atas/bawah dialog untuk mengatur TINGGI area input. */
+  /* Tarik tepi atas/bawah dialog untuk mengatur TINGGI area input.
+     Popup melayang normalnya "menempel" di pojok (right/bottom), jadi tinggi
+     yang bertambah malah menumbuhkan kotak ke arah yang salah. Karena itu
+     posisinya dibekukan dulu ke koordinat nyata sebelum tinggi diubah:
+     - tarik tepi BAWAH -> tepi atas diam, kotak memanjang ke bawah
+     - tarik tepi ATAS  -> tepi bawah diam, kotak memanjang ke atas */
   const startResizeV = (e: React.PointerEvent<HTMLDivElement>, side: 'top' | 'bottom') => {
     e.preventDefault()
     e.stopPropagation()
+    e.currentTarget.setPointerCapture?.(e.pointerId)
     const startY = e.clientY
-    const startH = height ?? dialogRef.current?.offsetHeight ?? 480
+    const rect = dialogRef.current?.getBoundingClientRect()
+    const startH = Math.round(rect?.height ?? height ?? 480)
+    const startLeft = Math.round(rect?.left ?? 0)
+    const startTop = Math.round(rect?.top ?? 0)
+    // Kunci posisi popup melayang supaya sisi seberang handle tidak ikut bergeser.
+    if (floating && !pos && rect) setPos({ x: startLeft, y: startTop })
     const onMove = (ev: PointerEvent) => {
       const delta = side === 'top' ? startY - ev.clientY : ev.clientY - startY
-      setHeight(Math.min(Math.round(viewport().h * 0.9), Math.max(240, startH + delta)))
+      const max = Math.max(MIN_POPUP_H, viewport().h - 24)
+      const next = Math.min(max, Math.max(MIN_POPUP_H, startH + delta))
+      setHeight(next)
+      // Tepi atas mengikuti kursor: geser posisi sebanyak tinggi yang bertambah.
+      if (side === 'top' && floating) setPos({ x: startLeft, y: Math.max(4, startTop + (startH - next)) })
     }
     const onUp = () => {
       ownerWin().removeEventListener('pointermove', onMove)
@@ -635,7 +654,9 @@ export function TaskNoteModal({
               width: floating ? (width ? `${width}px` : 'min(92vw, 430px)') : width ? `${width}px` : undefined,
               maxWidth: floating ? '92vw' : 'min(92vw, 1080px)',
               height: height ? `${height}px` : undefined,
-              maxHeight: floating ? '72dvh' : '88dvh',
+              // Tinggi hasil tarikan menang atas batas bawaan (kalau tidak,
+              // tarikan ke bawah berhenti di 72dvh dan terasa "tidak bisa").
+              maxHeight: height ? 'none' : floating ? '72dvh' : '88dvh',
             }
       }
     >
@@ -646,31 +667,31 @@ export function TaskNoteModal({
       <>
       <div
         onPointerDown={(e) => startResize(e, 'left')}
-        className="absolute bottom-10 left-0 top-4 z-20 w-1.5 cursor-ew-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+        className="group absolute -left-1.5 bottom-10 top-4 z-30 flex w-3.5 cursor-ew-resize touch-none items-center justify-center"
         aria-hidden="true"
       >
-        <span className="absolute left-1 top-1/2 h-10 w-1 -translate-y-1/2 rounded-pill bg-ink/20" />
+        <span className="h-10 w-1 rounded-pill bg-ink/15 transition-colors group-hover:bg-ink/40" />
       </div>
       <div
         onPointerDown={(e) => startResize(e, 'right')}
-        className="absolute bottom-10 right-0 top-4 z-20 w-1.5 cursor-ew-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+        className="group absolute -right-1.5 bottom-10 top-4 z-30 flex w-3.5 cursor-ew-resize touch-none items-center justify-center"
         aria-hidden="true"
       >
-        <span className="absolute right-1 top-1/2 h-10 w-1 -translate-y-1/2 rounded-pill bg-ink/20" />
+        <span className="h-10 w-1 rounded-pill bg-ink/15 transition-colors group-hover:bg-ink/40" />
       </div>
       <div
         onPointerDown={(e) => startResizeV(e, 'top')}
-        className="absolute inset-x-4 top-0 z-20 h-1.5 cursor-ns-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+        className="group absolute inset-x-6 -top-1.5 z-30 flex h-3.5 cursor-ns-resize touch-none items-center justify-center"
         aria-hidden="true"
       >
-        <span className="absolute left-1/2 top-1 h-1 w-10 -translate-x-1/2 rounded-pill bg-ink/20" />
+        <span className="h-1 w-10 rounded-pill bg-ink/15 transition-colors group-hover:bg-ink/40" />
       </div>
       <div
         onPointerDown={(e) => startResizeV(e, 'bottom')}
-        className="absolute inset-x-4 bottom-0 z-20 h-1.5 cursor-ns-resize touch-none rounded-full opacity-0 transition-opacity hover:opacity-100"
+        className="group absolute inset-x-6 -bottom-1.5 z-30 flex h-3.5 cursor-ns-resize touch-none items-center justify-center"
         aria-hidden="true"
       >
-        <span className="absolute bottom-1 left-1/2 h-1 w-10 -translate-x-1/2 rounded-pill bg-ink/20" />
+        <span className="h-1 w-10 rounded-pill bg-ink/15 transition-colors group-hover:bg-ink/40" />
       </div>
       </>
       )}
