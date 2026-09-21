@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useData } from '@/context/DataContext'
+import { taskProgress } from '@/types'
 import { useLang } from '@/context/LangContext'
 import { useAuth } from '@/context/AuthContext'
 import { Badge, EmptyState, GlassButton, GlassCard, ProgressBar } from '@/components/glass/Glass'
@@ -35,8 +36,9 @@ export function DashboardPage() {
     for (const project of data.projects) {
       buildings += project.buildings.length
       for (const building of project.buildings) {
-        tasksTotal += building.tasks.length
-        tasksDone += building.tasks.filter((task) => task.status === 'sudah').length
+        const progress = taskProgress(building.tasks)
+        tasksTotal += progress.total
+        tasksDone += progress.done
         if (building.targetSubmitStatus === 'belum' && building.targetSubmitDate) {
           const left = daysUntil(building.targetSubmitDate)
           if (left !== null) {
@@ -225,8 +227,7 @@ export function DashboardPage() {
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {data.projects.slice(0, 4).map((p) => {
-                const tasks = p.buildings.flatMap((b) => b.tasks)
-                const done = tasks.filter((x) => x.status === 'sudah').length
+                const { done, total } = taskProgress(p.buildings.flatMap((b) => b.tasks))
                 return (
                   <Link
                     key={p.id}
@@ -240,7 +241,7 @@ export function DashboardPage() {
                       <p className="truncate text-[14px] font-bold text-ink">{p.name}</p>
                       <p className="truncate text-[12px] text-ink-faint">
                         {t('projects.buildingCount', { n: p.buildings.length })}
-                        {tasks.length > 0 && ` · ${t('building.taskCount', { done, total: tasks.length })}`}
+                        {total > 0 && ` · ${t('building.taskCount', { done, total })}`}
                       </p>
                     </div>
                     <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" />

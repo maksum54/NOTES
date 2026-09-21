@@ -251,6 +251,52 @@ export interface AppData {
   updatedAt: ISODate
 }
 
+/**
+ * Task kosong hasil tombol "Task Baru" yang belum sempat diisi — bukan
+ * pekerjaan, jadi tidak ikut menahan target submit building.
+ */
+function isBlankTask(task: Task): boolean {
+  if (task.title.trim()) return false
+  if (task.images.length > 0 || task.links.length > 0) return false
+  return task.description.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '') === ''
+}
+
+/** Task yang menggantung: belum 'sudah', belum diarsipkan, dan tidak kosong. */
+export function outstandingTasks(tasks: Task[]): Task[] {
+  return tasks.filter((task) => !task.archived && task.status !== 'sudah' && !isBlankTask(task))
+}
+
+export function hasOutstandingTasks(building: Building): boolean {
+  return outstandingTasks(building.tasks).length > 0
+}
+
+/**
+ * Rekap "x/y selesai" yang dipakai semua kartu & progress bar: task kosong
+ * tidak ikut dihitung, task yang sudah masuk Arsip dianggap beres.
+ */
+export function taskProgress(tasks: Task[]): { done: number; total: number } {
+  const total = tasks.filter((task) => !isBlankTask(task)).length
+  return { done: total - outstandingTasks(tasks).length, total }
+}
+
+/**
+ * TARGET SUBMIT IKUT TASK.
+ *
+ * Selama masih ada task yang menggantung, target submit building itu 'belum'.
+ * Begitu semua task selesai atau masuk Arsip, target submit otomatis 'sudah'
+ * — badge "Lewat tenggat" di building, kartu project, daftar tenggat di
+ * Beranda, dan warning tenggat semuanya ikut padam karena semua membaca
+ * field yang sama.
+ *
+ * Building yang belum punya task sama sekali tidak diutak-atik: di situ
+ * target submit murni diatur manual lewat toggle Belum/Sudah.
+ */
+export function syncTargetSubmit(building: Building): Building {
+  if (building.tasks.length === 0) return building
+  const status: DoneStatus = hasOutstandingTasks(building) ? 'belum' : 'sudah'
+  return status === building.targetSubmitStatus ? building : { ...building, targetSubmitStatus: status }
+}
+
 export const DATA_VERSION = 2
 
 export function emptyData(): AppData {

@@ -7,7 +7,7 @@ import { ConfirmDialog, Modal } from '@/components/glass/Modal'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AlertIcon, BuildingIcon, ChevronRight, ClockIcon, PlusIcon, TrashIcon } from '@/components/icons'
 import { daysUntil, formatDate } from '@/lib/utils'
-import type { Building } from '@/types'
+import { taskProgress, type Building } from '@/types'
 
 /** NAMA PROJECT -> daftar NAMA BUILDING (nama bebas, bukan tiga area tetap). */
 export function ProjectDetailPage() {
@@ -60,7 +60,7 @@ export function ProjectDetailPage() {
       ) : (
         <div className="stack-fade grid gap-3 sm:grid-cols-2">
           {project.buildings.map((building) => {
-            const done = building.tasks.filter((task) => task.status === 'sudah').length
+            const { done, total } = taskProgress(building.tasks)
             const left = daysUntil(building.targetSubmitDate)
             const serious =
               building.lastReview?.findings.filter((f) => f.severity !== 'info').length ?? 0
@@ -125,14 +125,11 @@ export function ProjectDetailPage() {
                   )}
                 </div>
 
-                {building.tasks.length > 0 ? (
+                {total > 0 ? (
                   <>
-                    <ProgressBar
-                      value={(done / building.tasks.length) * 100}
-                      tone={done === building.tasks.length ? 'ok' : 'accent'}
-                    />
+                    <ProgressBar value={(done / total) * 100} tone={done === total ? 'ok' : 'accent'} />
                     <p className="text-[11.5px] font-semibold text-ink-faint">
-                      {t('building.taskCount', { done, total: building.tasks.length })}
+                      {t('building.taskCount', { done, total })}
                     </p>
                   </>
                 ) : (

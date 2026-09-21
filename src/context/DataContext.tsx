@@ -10,6 +10,8 @@ import {
 } from 'react'
 import {
   emptyData,
+  hasOutstandingTasks,
+  syncTargetSubmit,
   type AiReview,
   type AppData,
   type Building,
@@ -131,6 +133,29 @@ function mapBuilding(data: AppData, ids: BuildingIds, fn: (b: Building) => Build
           },
     ),
   }
+}
+
+/**
+ * Bungkus perubahan daftar task supaya TARGET SUBMIT IKUT TASK: setelah
+ * task berubah, status target submit building ikut disesuaikan.
+ *
+ * Penyesuaian hanya jalan kalau daftar task yang menggantung benar-benar
+ * berubah — mengetik judul/isi task tidak boleh menimpa pilihan manual user
+ * di toggle Belum/Sudah (popup menyimpan tiap ketikan).
+ */
+function withTaskSync(fn: (b: Building) => Building): (b: Building) => Building {
+  return (b) => {
+    const next = fn(b)
+    return hasOutstandingTasks(next) === hasOutstandingTasks(b) ? next : syncTargetSubmit(next)
+  }
+}
+
+/** Warning tenggat building yang target submitnya sudah beres tidak relevan lagi. */
+function clearSettledWarnings(data: AppData, ids: BuildingIds): AppData {
+  const building = findBuilding(data, ids)?.building
+  if (!building || building.targetSubmitStatus !== 'sudah') return data
+  const warnings = data.warnings.filter((w) => !w.dedupeKey.startsWith(`due:${ids.buildingId}:`))
+  return warnings.length === data.warnings.length ? data : { ...data, warnings }
 }
 
 export function findBuilding(
@@ -495,6 +520,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   /* ---------- task ---------- */
 
+  /** Semua perubahan daftar task lewat sini: task disimpan, lalu status
+   *  target submit & warning tenggat building ikut disamakan. */
+  const mutateTasks = useCallback(
+    (ids: BuildingIds, fn: (b: Building) => Building) => {
+      mutate((prev) => clearSettledWarnings(mapBuilding(prev, ids, withTaskSync(fn)), ids))
+    },
+    [mutate],
+  )
+
   const addTask = useCallback<DataValue['addTask']>(
     (ids, input) => {
       const stamp = nowISO()
@@ -511,54 +545,46 @@ export function DataProvider({ children }: { children: ReactNode }) {
         updatedAt: stamp,
       }
       let ok = false
-      mutate((prev) =>
-        mapBuilding(prev, ids, (b) => {
-          ok = true
-          return { ...b, tasks: [...b.tasks, task] }
-        }),
-      )
+      mutateTasks(ids, (b) => {
+        ok = true
+        return { ...b, tasks: [...b.tasks, task] }
+      })
       return ok ? task : null
     },
-    [mutate],
+    [mutateTasks],
   )
 
   const updateTask = useCallback<DataValue['updateTask']>(
     (ids, taskId, patch) => {
-      mutate((prev) =>
-        mapBuilding(prev, ids, (b) => ({
-          ...b,
-          tasks: b.tasks.map((task) =>
-            task.id === taskId ? { ...task, ...patch, id: task.id, updatedAt: nowISO() } : task,
-          ),
-        })),
-      )
+      mutateTasks(ids, (b) => ({
+        ...b,
+        tasks: b.tasks.map((task) =>
+          task.id === taskId ? { ...task, ...patch, id: task.id, updatedAt: nowISO() } : task,
+        ),
+      }))
     },
-    [mutate],
+    [mutateTasks],
   )
 
   const deleteTask = useCallback<DataValue['deleteTask']>(
     (ids, taskId) => {
-      mutate((prev) =>
-        mapBuilding(prev, ids, (b) => ({ ...b, tasks: b.tasks.filter((task) => task.id !== taskId) })),
-      )
+      mutateTasks(ids, (b) => ({ ...b, tasks: b.tasks.filter((task) => task.id !== taskId) }))
     },
-    [mutate],
+    [mutateTasks],
   )
 
   const toggleTask = useCallback<DataValue['toggleTask']>(
     (ids, taskId) => {
-      mutate((prev) =>
-        mapBuilding(prev, ids, (b) => ({
-          ...b,
-          tasks: b.tasks.map((task) => {
-            if (task.id !== taskId) return task
-            const status: DoneStatus = task.status === 'sudah' ? 'belum' : 'sudah'
-            return { ...task, status, updatedAt: nowISO() }
-          }),
-        })),
-      )
+      mutateTasks(ids, (b) => ({
+        ...b,
+        tasks: b.tasks.map((task) => {
+          if (task.id !== taskId) return task
+          const status: DoneStatus = task.status === 'sudah' ? 'belum' : 'sudah'
+          return { ...task, status, updatedAt: nowISO() }
+        }),
+      }))
     },
-    [mutate],
+    [mutateTasks],
   )
 
   /* ---------- catatan (sticky note bebas) ---------- */

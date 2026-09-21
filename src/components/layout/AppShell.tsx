@@ -5,6 +5,7 @@ import { useLang } from '@/context/LangContext'
 import { useTheme } from '@/context/ThemeContext'
 import { useAuth } from '@/context/AuthContext'
 import { useData } from '@/context/DataContext'
+import { outstandingTasks } from '@/types'
 import { GlassButton } from '@/components/glass/Glass'
 import {
   BellIcon, CloudIcon, FolderIcon, GearIcon, GlobeIcon, HomeIcon,
@@ -31,7 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     () =>
       data.projects.reduce(
         (n, p) =>
-          n + p.buildings.reduce((m, b) => m + b.tasks.filter((t) => t.status === 'belum').length, 0),
+          n + p.buildings.reduce((m, b) => m + outstandingTasks(b.tasks).length, 0),
         0,
       ),
     [data.projects],

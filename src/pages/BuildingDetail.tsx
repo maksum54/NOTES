@@ -13,7 +13,7 @@ import {
   LinkIcon, PlusIcon, SparkIcon, TaskIcon,
 } from '@/components/icons'
 import { daysUntil, formatDate } from '@/lib/utils'
-import type { Building, DoneStatus, Project, Task } from '@/types'
+import { outstandingTasks, type Building, type DoneStatus, type Project, type Task } from '@/types'
 
 /**
  * Satu building: TARGET SUBMIT plus daftar TASK berbentuk kartu berslider
@@ -184,7 +184,7 @@ function BuildingTaskSection({
             </GlassButton>
           </div>
         )}
-        <Badge tone="warn">{rows.filter((r) => r.task.status === 'belum' && !r.task.archived).length}</Badge>
+        <Badge tone="warn">{outstandingTasks(rows.map((r) => r.task)).length}</Badge>
         {archived.length > 0 && (
           <GlassButton
             variant={showArchived ? 'primary' : 'ghost'}
