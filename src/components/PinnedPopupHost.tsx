@@ -190,6 +190,7 @@ export function PinnedPopupHost() {
               pinned: target.note.pinned,
               color: target.note.color,
               dueDate: null,
+              done: target.note.archived,
               archived: target.note.archived,
               collaborators: target.note.collaborators ?? [],
             }}
@@ -220,6 +221,7 @@ export function PinnedPopupHost() {
               pinned: target.task.pinned ?? false,
               color: target.task.color ?? null,
               dueDate: target.task.dueDate,
+              done: target.task.status === 'sudah',
               archived: target.task.archived ?? false,
               collaborators: target.task.collaborators ?? [],
             }}
@@ -236,6 +238,7 @@ export function PinnedPopupHost() {
                 color: draft.color,
                 collaborators: draft.collaborators ?? [],
                 dueDate: draft.dueDate,
+                status: draft.done ? 'sudah' : 'belum',
                 archived: draft.archived,
               })
             }

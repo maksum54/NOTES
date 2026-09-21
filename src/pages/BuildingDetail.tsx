@@ -273,6 +273,7 @@ function BuildingTaskSection({
             pinned: modalRow.task.pinned ?? false,
             color: modalRow.task.color ?? null,
             dueDate: modalRow.task.dueDate,
+            done: modalRow.task.status === 'sudah',
             archived: modalRow.task.archived ?? false,
             collaborators: modalRow.task.collaborators ?? [],
           }}
@@ -289,6 +290,7 @@ function BuildingTaskSection({
               color: draft.color,
               collaborators: draft.collaborators ?? [],
               dueDate: draft.dueDate,
+              status: draft.done ? 'sudah' : 'belum',
               archived: draft.archived,
             })
           }
