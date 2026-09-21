@@ -108,6 +108,7 @@ export const en: Dict = {
     notFound: 'Canvas not found.',
   },
   storage: {
+    connecting: 'Connecting to Google Drive…',
     title: 'Storage',
     subtitle: 'Personal storage on your Google Drive — upload & download any file.',
     upload: 'Upload File',

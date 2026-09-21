@@ -11,7 +11,7 @@ import {
 } from '@/components/icons'
 import { daysUntil, formatDate } from '@/lib/utils'
 import { isAiReady } from '@/lib/ai'
-import { isDriveConnected } from '@/lib/drive'
+import { useDriveStatus } from '@/lib/useDriveStatus'
 import type { ReactNode } from 'react'
 
 export function DashboardPage() {
@@ -59,10 +59,14 @@ export function DashboardPage() {
   const progress = stats.tasksTotal === 0 ? 0 : (stats.tasksDone / stats.tasksTotal) * 100
   const recentWarnings = data.warnings.slice(0, 4)
 
+  /* Ajakan "Sambungkan Google Drive" hanya muncul kalau memang perlu tindakan
+     user — bukan saat tokennya sedang diperbarui otomatis. */
+  const drive = useDriveStatus()
+
   const todo = [
     data.projects.length === 0 && { to: '/projects', label: t('dashboard.createProject'), icon: <FolderIcon className="h-4 w-4" /> },
     !isAiReady() && { to: '/settings', label: t('dashboard.setupAi'), icon: <SparkIcon className="h-4 w-4" /> },
-    !isDriveConnected() && { to: '/settings', label: t('dashboard.connectDrive'), icon: <CloudIcon className="h-4 w-4" /> },
+    drive.status === 'disconnected' && { to: '/settings', label: t('dashboard.connectDrive'), icon: <CloudIcon className="h-4 w-4" /> },
   ].filter(Boolean) as { to: string; label: string; icon: ReactNode }[]
 
   // Jam penyapa sesuai waktu setempat.

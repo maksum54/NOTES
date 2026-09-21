@@ -9,9 +9,10 @@ import {
 } from '@/components/icons'
 import {
   connectDrive, deleteStorageFile, downloadStorageFile, driveQuota,
-  isDriveConfigured, isDriveConnected, listStorageFiles, STORAGE_FOLDER_NAME,
+  listStorageFiles, STORAGE_FOLDER_NAME,
   uploadStorageFile, type DriveQuota, type StorageFile,
 } from '@/lib/drive'
+import { useDriveStatus } from '@/lib/useDriveStatus'
 import { formatBytes, formatDateTime } from '@/lib/utils'
 
 /**
@@ -23,7 +24,9 @@ export function StoragePage() {
   const { t, lang } = useLang()
   const { data } = useData()
 
-  const [connected, setConnected] = useState(isDriveConnected)
+  /* Status sambungan diikuti terus (dan diperbarui senyap kalau izinnya
+     sudah pernah diberikan), bukan dipotret sekali saat halaman dibuka. */
+  const { status, connected, refresh: refreshStatus } = useDriveStatus()
   const [files, setFiles] = useState<StorageFile[]>([])
   const [quota, setQuota] = useState<DriveQuota | null>(null)
   const [loading, setLoading] = useState(false)
@@ -41,12 +44,14 @@ export function StoragePage() {
       setFiles(list)
       setQuota(q)
     } catch (err) {
-      if (err instanceof Error && err.message === 'drive-unauthorized') setConnected(false)
+      // Token ditolak Drive -> drive.ts sudah membuang tokennya dan memberi
+      // tahu; cukup baca ulang statusnya.
+      if (err instanceof Error && err.message === 'drive-unauthorized') refreshStatus()
       setNotice({ tone: 'danger', text: t('storage.loadFail') })
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, refreshStatus])
 
   // Muat daftar otomatis begitu Drive tersambung.
   useEffect(() => {
@@ -58,7 +63,7 @@ export function StoragePage() {
     setNotice(null)
     try {
       await connectDrive(true)
-      setConnected(true)
+      refreshStatus()
     } catch (err) {
       setNotice({
         tone: 'danger',
@@ -144,11 +149,22 @@ export function StoragePage() {
       />
 
       <div className="stack-fade space-y-4">
-        {!isDriveConfigured() ? (
+        {status === 'unconfigured' ? (
           <GlassCard>
             <p className="rounded-2xl border border-warn/25 bg-warn/10 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-warn">
               {t('settings.driveNotConfigured')}
             </p>
+          </GlassCard>
+        ) : status === 'connecting' ? (
+          /* Izin sudah pernah diberikan — tokennya sedang diperbarui tanpa
+             popup. Jangan suruh user menyambungkan ulang di sini. */
+          <GlassCard className="flex min-h-[60dvh] items-center justify-center">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-accent/15 text-accent">
+                <CloudIcon className="h-7 w-7 animate-pulse" />
+              </div>
+              <p className="text-[15px] font-bold text-ink">{t('storage.connecting')}</p>
+            </div>
           </GlassCard>
         ) : !connected ? (
           <GlassCard className="flex min-h-[60dvh] items-center justify-center">

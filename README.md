@@ -35,7 +35,7 @@ NAMA PROJECT → NAMA BUILDING   (nama bebas diketik sendiri)
 | **Dual theme** | Gelap (default), terang, dan mengikuti sistem — tersimpan di localStorage, diterapkan sebelum React mount agar tidak ada flash |
 | **Mode login** | Google Sign-In (sekaligus izin Drive) atau Mode Lokal dengan passcode 6 digit tanpa akun |
 | **AI** | Endpoint vikey.ai (kompatibel OpenAI). Review summary client terhadap catatan standard, asisten umum, dan chat per-task |
-| **Google Drive** | Backup/restore seluruh data sebagai satu file JSON, scope `drive.file` (app hanya menyentuh file buatannya sendiri) |
+| **Google Drive** | Backup/restore seluruh data sebagai satu file JSON, scope `drive.file` (app hanya menyentuh file buatannya sendiri). Login Google = Drive & Storage langsung tersambung; consent hanya sekali di awal |
 | **Import Excel** | `.xlsx` / `.xls` / `.csv` → catatan standard, dengan pengenalan nama kolom yang toleran (ID & EN) |
 | **Papan coretan** | Coret-coret di atas gambar seperti papan tulis: pena, stabilo, teks, penghapus. Koordinat ternormalisasi jadi tetap presisi di HP maupun PC |
 | **Warning** | Notifikasi di HP & PC saat AI menemukan penyimpangan atau target submit mendekat/lewat |
@@ -155,6 +155,15 @@ src/
   halaman utama lewat portal (CSS & tema disalin ke dokumen jendela), sehingga
   editing, auto-save, dan sinkron Drive berjalan sama persis. Aktifkan
   "pin = langsung jadi sticky note" di Pengaturan -> Tampilan kalau mau otomatis.
+- **Drive tersambung sendiri, consent hanya sekali.** Token Google berumur
+  ~1 jam, jadi tiap app dibuka token diperbarui SENYAP (`prompt: ''`) selama
+  izinnya pernah diberikan. Halaman Storage/Pengaturan/Beranda mengikuti status
+  itu lewat `useDriveStatus` (bukan memotretnya sekali saat mount), sehingga
+  halaman yang dibuka selagi perbaruan berjalan tidak lagi salah bilang "belum
+  tersambung". Logout hanya melupakan sesi Drive di perangkat ini — izinnya
+  TIDAK dicabut, supaya login berikutnya langsung tersambung. Hanya tombol
+  "Putuskan" yang benar-benar mencabut izin; penandanya disimpan
+  (`notes.drive.optOut`) supaya reload tidak menyambungkan ulang diam-diam.
 - **API key AI tidak pernah masuk bundle produksi** — diisi user lewat Pengaturan.
 - **Building adalah unit terkecil.** Tidak ada level sub-area; nama building
   bebas, sehingga satu project bisa berisi "Raw Material Warehouse", "Utility",

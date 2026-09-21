@@ -78,6 +78,31 @@ function loadGis(): Promise<GoogleAccounts> {
   return gisPromise
 }
 
+/* ---------- pemberitahuan perubahan status ----------
+   Halaman (Storage, Pengaturan) perlu tahu saat token datang/hilang, bukan
+   memotret status sekali saat mount — kalau memotret, halaman yang dibuka
+   selagi reconnect senyap masih jalan akan terus bilang "belum tersambung". */
+
+type DriveListener = () => void
+const driveListeners = new Set<DriveListener>()
+
+export function subscribeDrive(listener: DriveListener): () => void {
+  driveListeners.add(listener)
+  return () => {
+    driveListeners.delete(listener)
+  }
+}
+
+function emitDrive(): void {
+  driveListeners.forEach((fn) => {
+    try {
+      fn()
+    } catch {
+      /* satu listener rusak tidak boleh menjatuhkan yang lain */
+    }
+  })
+}
+
 /* ---------- token ---------- */
 
 interface StoredToken {
@@ -118,7 +143,20 @@ export function setAutoSync(on: boolean): void {
  * Setelah itu app boleh memperbarui token otomatis (tanpa consent) tiap dibuka.
  */
 export function wasEverConnected(): boolean {
-  return readRaw('driveEverConnected') === '1'
+  // User pernah menekan "Putuskan": izinnya sudah dicabut di Google, jadi
+  // app TIDAK boleh menyambung sendiri lagi sampai dia menyambungkan manual
+  // (atau login Google lagi, yang memang menampilkan consent).
+  if (readRaw('driveOptOut') === '1') return false
+  if (readRaw('driveEverConnected') === '1') return true
+  // Login Google sekalian memberi izin Drive, jadi akun Google boleh mencoba
+  // memperbarui token tanpa consent walau penanda di atas hilang (mis.
+  // localStorage sempat dibersihkan sebagian atau dipasang di perangkat baru).
+  try {
+    const raw = readRaw('auth')
+    return raw !== null && (JSON.parse(raw) as { mode?: string }).mode === 'google'
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -126,16 +164,22 @@ export function wasEverConnected(): boolean {
  * token sedang tidak ada/kedaluwarsa. Popup Google TIDAK muncul (prompt '').
  * Gagal (offline, browser blokir popup) dianggap tidak fatal.
  */
-export async function silentReconnect(): Promise<boolean> {
-  if (!isDriveConfigured()) return false
-  if (isDriveConnected()) return true
-  if (!wasEverConnected()) return false
-  try {
-    await connectDrive(false)
-    return isDriveConnected()
-  } catch {
-    return false
-  }
+let silentInFlight: Promise<boolean> | null = null
+
+export function silentReconnect(): Promise<boolean> {
+  if (!isDriveConfigured()) return Promise.resolve(false)
+  if (isDriveConnected()) return Promise.resolve(true)
+  if (!wasEverConnected()) return Promise.resolve(false)
+  // Beberapa tempat (DataContext + halaman Storage/Pengaturan) bisa memintanya
+  // bersamaan; satu permintaan token saja sudah cukup untuk semuanya.
+  if (silentInFlight) return silentInFlight
+  silentInFlight = connectDrive(false)
+    .then(() => isDriveConnected())
+    .catch(() => false)
+    .finally(() => {
+      silentInFlight = null
+    })
+  return silentInFlight
 }
 
 /** Buka consent popup Google dan simpan access token. */
@@ -161,6 +205,10 @@ export async function connectDrive(interactive = true): Promise<void> {
               expiresAt: Date.now() + (resp.expires_in ?? 3600) * 1000,
             } satisfies StoredToken),
           )
+          // User menyambungkan lagi setelah menekan "Putuskan" -> pencabutan
+          // itu tidak berlaku lagi.
+          removeRaw('driveOptOut')
+          emitDrive()
           resolve()
         },
       })
@@ -182,14 +230,29 @@ export async function connectDrive(interactive = true): Promise<void> {
   await request('consent')
 }
 
-export async function disconnectDrive(): Promise<void> {
-  const token = readToken()
+/**
+ * Lupakan sesi Drive di PERANGKAT ini tanpa mencabut izin Google. Dipakai saat
+ * logout: izin tetap berlaku, jadi login berikutnya tersambung sendiri tanpa
+ * layar consent. (Mencabut izin saat logout justru memaksa user menyetujui
+ * ulang tiap kali masuk.)
+ */
+export function forgetDriveSession(): void {
   removeRaw('driveToken')
   removeRaw('driveFileId')
   removeRaw('driveStorageFolderId')
-  // driveEverConnected SENGAJA dipertahankan: user yang pernah menyetujui
-  // akses Drive tidak perlu menyetujui ulang tiap login — login berikutnya
-  // tersambung otomatis secara senyap.
+  emitDrive()
+}
+
+/** Putuskan sungguhan: token dicabut di Google dan izinnya dilepas. */
+export async function disconnectDrive(): Promise<void> {
+  const token = readToken()
+  forgetDriveSession()
+  // Izin dicabut di sisi Google, jadi penandanya ikut dibuang — permintaan
+  // token senyap pasti ditolak sampai user menyetujui lagi. Penanda opt-out
+  // disimpan (bukan sekadar variabel di memori) supaya reload halaman tidak
+  // menyambungkan ulang diam-diam.
+  removeRaw('driveEverConnected')
+  writeRaw('driveOptOut', '1')
   if (!token) return
   try {
     const accounts = await loadGis()
@@ -215,6 +278,7 @@ async function driveFetch(url: string, init: RequestInit = {}): Promise<Response
   const res = await fetch(url, { ...init, headers })
   if (res.status === 401 || res.status === 403) {
     removeRaw('driveToken')
+    emitDrive()
     throw new Error('drive-unauthorized')
   }
   return res
