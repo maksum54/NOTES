@@ -1,6 +1,6 @@
 import {
-  DATA_VERSION, emptyData, syncTargetSubmit,
-  type AppData, type Building, type Project, type Warning,
+  DATA_VERSION, emptyData, isBlankTask, syncTargetSubmit,
+  type AppData, type Building, type Project,
 } from '@/types'
 
 /**
@@ -97,7 +97,7 @@ export function migrate(input: unknown): AppData {
     projects,
     standards,
     notes: Array.isArray(d.notes) ? d.notes : [],
-    warnings: dropSettledDueWarnings(Array.isArray(d.warnings) ? d.warnings : [], projects),
+    warnings: Array.isArray(d.warnings) ? d.warnings : [],
     boards: Array.isArray(d.boards) ? d.boards : [],
     members: Array.isArray(d.members) ? d.members : [],
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : base.updatedAt,
@@ -124,26 +124,51 @@ function normalizeProjects(input: unknown): Project[] {
 }
 
 /**
- * Warning "lewat tenggat" milik building yang target submitnya sudah beres
- * tidak relevan lagi — dibuang sekalian saat data dimuat, supaya halaman
- * Peringatan tidak menyisakan tenggat yang sebetulnya sudah selesai.
+ * PERINGATAN TENGGAT IKUT KEADAAN TERBARU.
+ *
+ * Warning tenggat (dedupeKey `due:<buildingId>:<tanggal>:<over|soon>`) hanya
+ * berlaku selama kondisinya masih benar: buildingnya masih ada, target
+ * submitnya belum beres, dan tanggalnya belum diganti. Begitu salah satu
+ * berubah — termasuk saat task terakhir masuk Arsip — warningnya ikut hilang
+ * dari halaman Peringatan tanpa perlu dihapus manual.
+ *
+ * Dipanggil di setiap perubahan data, jadi tidak ada peringatan basi.
  */
-function dropSettledDueWarnings(warnings: Warning[], projects: Project[]): Warning[] {
-  const settled = new Set<string>()
-  for (const project of projects) {
+export function pruneDueWarnings(data: AppData): AppData {
+  const valid = new Set<string>()
+  for (const project of data.projects) {
     for (const building of project.buildings ?? []) {
-      if (building.targetSubmitStatus === 'sudah') settled.add(building.id)
+      if (building.targetSubmitStatus === 'sudah' || !building.targetSubmitDate) continue
+      valid.add(`due:${building.id}:${building.targetSubmitDate}:over`)
+      valid.add(`due:${building.id}:${building.targetSubmitDate}:soon`)
     }
   }
-  if (settled.size === 0) return warnings
-  return warnings.filter((w) => {
-    if (typeof w?.dedupeKey !== 'string' || !w.dedupeKey.startsWith('due:')) return true
-    return !settled.has(w.dedupeKey.split(':')[1])
-  })
+  const warnings = data.warnings.filter(
+    (w) => typeof w?.dedupeKey !== 'string' || !w.dedupeKey.startsWith('due:') || valid.has(w.dedupeKey),
+  )
+  return warnings.length === data.warnings.length ? data : { ...data, warnings }
+}
+
+/**
+ * Task kosong yang tertinggal dari sesi sebelumnya dibuang saat app dibuka.
+ * Sengaja hanya di sini, bukan di migrate(): saat app berjalan bisa saja ada
+ * task baru yang memang masih kosong karena editornya sedang dibuka.
+ */
+function pruneBlankTasks(data: AppData): AppData {
+  return {
+    ...data,
+    projects: data.projects.map((project) => ({
+      ...project,
+      buildings: project.buildings.map((building) => {
+        const tasks = building.tasks.filter((task) => !isBlankTask(task))
+        return tasks.length === building.tasks.length ? building : { ...building, tasks }
+      }),
+    })),
+  }
 }
 
 export function loadData(): AppData {
-  return migrate(readJSON<unknown>('data', null))
+  return pruneDueWarnings(pruneBlankTasks(migrate(readJSON<unknown>('data', null))))
 }
 
 export function saveData(data: AppData): void {

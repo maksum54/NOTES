@@ -251,14 +251,26 @@ export interface AppData {
   updatedAt: ISODate
 }
 
+/** Teks rich-text dianggap kosong kalau tidak menyisakan huruf apa pun. */
+function isEmptyRichText(html: string): boolean {
+  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '') === ''
+}
+
 /**
  * Task kosong hasil tombol "Task Baru" yang belum sempat diisi — bukan
- * pekerjaan, jadi tidak ikut menahan target submit building.
+ * pekerjaan, jadi tidak ikut menahan target submit building dan boleh
+ * dibuang begitu editornya ditutup.
  */
-function isBlankTask(task: Task): boolean {
+export function isBlankTask(task: Task): boolean {
   if (task.title.trim()) return false
-  if (task.images.length > 0 || task.links.length > 0) return false
-  return task.description.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '') === ''
+  if (task.images.length > 0 || task.links.length > 0 || task.chat.length > 0) return false
+  if (task.canvas) return false
+  return isEmptyRichText(task.description)
+}
+
+/** Catatan kosong dari tombol "Catatan baru" — padanan isBlankTask untuk note. */
+export function isBlankNote(note: Note): boolean {
+  return note.title.trim() === '' && isEmptyRichText(note.body)
 }
 
 /** Task yang menggantung: belum 'sudah', belum diarsipkan, dan tidak kosong. */
