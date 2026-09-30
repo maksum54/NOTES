@@ -35,6 +35,9 @@ interface GoogleAccounts {
       scope: string
       prompt?: string
       callback: (resp: TokenResponse) => void
+      /** Dipanggil saat popup gagal dibuka / ditutup user — TANPA ini
+       *  callback utama tidak pernah dipanggil dan promise menggantung. */
+      error_callback?: (err: { type?: string; message?: string }) => void
     }): TokenClient
     revoke(token: string, done: () => void): void
   }
@@ -47,11 +50,31 @@ declare global {
 
 let gisPromise: Promise<GoogleAccounts> | null = null
 
+/* Semua langkah Drive yang menunggu Google (muat skrip, minta token) WAJIB
+   punya batas waktu. Tanpa itu, satu langkah yang tidak pernah menjawab
+   (popup diblokir, iframe senyap dicegat, skrip macet) membuat status
+   "menyambungkan…" berputar selamanya. */
+function withTimeout<T>(p: Promise<T>, ms: number, code: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(code)), ms)
+    p.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e: unknown) => {
+        clearTimeout(timer)
+        reject(e)
+      },
+    )
+  })
+}
+
 function loadGis(): Promise<GoogleAccounts> {
   if (window.google?.accounts) return Promise.resolve(window.google.accounts)
   if (gisPromise) return gisPromise
 
-  gisPromise = new Promise<GoogleAccounts>((resolve, reject) => {
+  gisPromise = withTimeout(new Promise<GoogleAccounts>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${GIS_SRC}"]`)
     const onReady = () => {
       if (window.google?.accounts) resolve(window.google.accounts)
@@ -70,7 +93,7 @@ function loadGis(): Promise<GoogleAccounts> {
     script.onload = onReady
     script.onerror = () => reject(new Error('gis-load-failed'))
     document.head.appendChild(script)
-  }).catch((err: unknown) => {
+  }), 15_000, 'gis-load-timeout').catch((err: unknown) => {
     gisPromise = null
     throw err
   })
@@ -187,8 +210,10 @@ export async function connectDrive(interactive = true): Promise<void> {
   if (!isDriveConfigured()) throw new Error('drive-not-configured')
   const accounts = await loadGis()
 
+  // Senyap: Google biasanya menjawab dalam 1–3 detik. Interaktif: beri waktu
+  // user memilih akun / menyetujui di popup.
   const request = (prompt: string): Promise<void> =>
-    new Promise<void>((resolve, reject) => {
+    withTimeout(new Promise<void>((resolve, reject) => {
       const client = accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: SCOPE,
@@ -211,9 +236,14 @@ export async function connectDrive(interactive = true): Promise<void> {
           emitDrive()
           resolve()
         },
+        error_callback: (err) => reject(new Error(err?.type || 'token-request-failed')),
       })
-      client.requestAccessToken({ prompt })
-    })
+      try {
+        client.requestAccessToken({ prompt })
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('token-request-failed'))
+      }
+    }), prompt === '' ? 20_000 : 180_000, 'drive-token-timeout')
 
   // User sudah pernah menyetujui akses Drive -> minta token SENYAP dulu
   // (tanpa popup), supaya login berikutnya tidak muncul layar izin lagi.
